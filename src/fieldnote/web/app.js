@@ -1,6 +1,8 @@
 import { createPublishingController } from "./publishing.js?handoff=1";
 import { migratePreferences } from "./preferences.js";
+import { createFormValidation } from "./validation.js";
 let publishing;
+let briefValidation;
 // Fieldnote browser client.
 // Security boundary: untrusted Markdown is rendered with DOM text nodes only.
 // Raw HTML, images, remote assets and authored links are never inserted.
@@ -1305,8 +1307,7 @@ function payloadKey(payload) {
 async function submitBrief(event) {
   event.preventDefault();
   clearError();
-  const form = $("brief-form");
-  if (!form.reportValidity()) return;
+  if (!briefValidation.validate()) return;
   if (!researchWarning()) {
     $("research_mode").focus();
     announce("Choose a research mode that fits this source-dependent brief.");
@@ -1499,6 +1500,19 @@ async function refreshTopics() {
 }
 
 function wireEvents() {
+  briefValidation = createFormValidation($("brief-form"), { announce, custom: {
+    "destination-medium": () => ["medium", "linkedin", "x"].some(name => $("destination-" + name).checked)
+      ? "" : "Select at least one publishing destination.",
+    reference_urls: field => {
+      const urls = field.value.split(/\r?\n/).map(url => url.trim()).filter(Boolean);
+      if (urls.length > 4) return "Add up to four source URLs, one per line.";
+      for (const url of urls) {
+        try { if (!["http:", "https:"].includes(new URL(url).protocol)) throw new Error("invalid_url"); }
+        catch { return "Enter a complete source URL on each line, such as https://example.com/article."; }
+      }
+      return "";
+    },
+  } });
   publishing = createPublishingController({ api, state, showError, announce, renderMarkdown });
   $("writing-task").addEventListener("click", () => setDraftTask("write"));
   $("publishing-task").addEventListener("click", () => { setFocusMode(false); setDraftTask("publish"); });

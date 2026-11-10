@@ -6,15 +6,15 @@ application API, and **PostgreSQL** for checkpoints, research records and versio
 articles.
 
 The writing workspace combines editable Markdown with a source ledger, editorial
-assessments and revision history. It prepares publication bundles for Medium,
-LinkedIn and X, keeping research and review attached to the article as it moves
-from an initial brief to a publishable draft.
+assessments and revision history. A separate publication workspace prepares
+Medium, LinkedIn and X variants for manual posting, keeping research and review
+attached to the saved article revision.
 
 [User guide](docs/user-guide.md) · [Setup](docs/setup-and-operations.md) · [Workflow](docs/workflow.md) · [CI](https://github.com/BatuhanYilmaz26/Fieldnote/actions/workflows/ci.yml)
 
-![Fieldnote technical article preview with a Pydantic code example, editorial review and revision history](assets/fieldnote-writing-studio.jpg)
+![Fieldnote Writing Desk with an editable technical article, illustrative Python code and revision-specific review](assets/fieldnote-writing-desk.jpg)
 
-*Technical article sample edited in the local fixture profile; source and review data are synthetic.*
+*Running local application with an edited synthetic fixture. The example and source data do not demonstrate live model quality.*
 
 ## Architecture
 
@@ -43,20 +43,25 @@ the exact revision it reviewed.
 
 ## Capabilities
 
+- **Writing Desk:** a focused light/dark workspace with readable typography, inline field validation, keyboard-accessible mobile navigation and an article-first reading view.
 - **Research and source inspection:** discover topics from publisher and research feeds, inspect source dates, and supply primary references and author observations.
 - **Multilingual drafting:** generate articles in English, Turkish, Spanish, Portuguese or German with a configurable audience, tone and target length.
 - **Editorial workflow:** compare headline suggestions, edit Markdown, inspect claim-support findings and request assessments of saved revisions.
-- **Publication preparation:** edit search-preview metadata and LinkedIn/X variants, validate platform lengths, and export article text, HTML, Markdown and references.
+- **Publication preparation:** switch between Medium, LinkedIn and X views; edit independent social drafts; copy a separate title and formatted or plain-text body; copy ordered X posts with saved weighted counts; export revision-bound bundles.
 - **Persistent workspace:** reopen drafts, inspect revision history and record published links against the corresponding article package.
+
+![Fieldnote publication workspace with channel-specific previews, separate title and formatted-body copying, and review status](assets/fieldnote-publication-handoff.jpg)
+
+*Publication preparation in the local fixture profile. Unsaved edits, stale assessments and revision mismatches disable copy/download controls. Fieldnote does not post to external platforms.*
 
 ## Design decisions
 
 | Concern | Approach |
 |---|---|
 | **LLM output contracts** | Pydantic validates plans, section drafts and editorial reviews before downstream processing. Schema repair attempts have explicit limits. |
-| **Source traceability** | Sources and excerpts retain identifiers and content hashes. Citation links resolve through the stored ledger; claim-support checks surface gaps for review. |
+| **Source traceability** | Excerpt identities bind the source, content hash and locator, preserving provenance when different URLs contain identical text. Citation links resolve through the stored ledger; claim-support checks surface gaps for review. |
 | **Execution ownership** | Leased jobs, idempotency and PostgreSQL checkpoints separate durable execution from individual HTTP requests and browser connections. |
-| **Bounded generation** | Section concurrency, rewrite rounds, request/token limits and cost reservations constrain each run. Free-only routing does not fall back to paid models. |
+| **Bounded generation** | Section concurrency, rewrite rounds and model quota/spend reservations constrain each run. Research requests check cancellation, deadline and lease ownership before dispatch; uncertain billing stops collection. Free-only routing does not fall back to paid models. |
 | **Review integrity** | Immutable Markdown revisions and content hashes bind assessments and publication packages to specific article versions. Later edits start unassessed. |
 | **Operational visibility** | Persisted events, worker heartbeats, readiness checks, metrics and redacted structured logs expose progress and failures without logging provider credentials. |
 
@@ -67,8 +72,8 @@ the exact revision it reviewed.
 | Workflow and validation | Python 3.13, LangGraph, Pydantic |
 | API and progress | FastAPI, Uvicorn, asyncio, Server-Sent Events |
 | Persistence | PostgreSQL, Psycopg, LangGraph PostgreSQL checkpointer |
-| Providers | OpenRouter, HTTPX; Treg and optional Tavily research adapters |
-| Frontend | JavaScript modules, semantic HTML, CSS, safe Markdown rendering |
+| Providers | OpenRouter, HTTPX; Treg/TinyFish and optional Tavily research adapters |
+| Frontend | JavaScript modules, semantic HTML, themed CSS, locally served Manrope and safe Markdown rendering |
 | Development and operations | pytest, Ruff, Mypy, Docker Compose, GitHub Actions |
 
 ## Evaluation and verification

@@ -2201,6 +2201,8 @@ body[data-task='publish'] .draft-grid {grid-template-columns:minmax(0,1fr);max-w
 body[data-task='publish'] #inspector {display:none}
 #publishing-surface {border:1px solid var(--line);border-radius:12px;background:var(--surface)}
 .platform-preview {border:1px solid var(--line);border-radius:8px;min-height:0;padding:24px;margin-top:24px}
+.field-error {font:500 13px/1.6 var(--font-ui);color:var(--danger);margin-top:8px;overflow-wrap:anywhere}
+input[aria-invalid='true'],textarea[aria-invalid='true'],select[aria-invalid='true'] {border-color:var(--danger);background:var(--danger-soft)}
 .saved-posts {padding-left:24px;margin:24px 0}
 .saved-posts li {padding:20px 0;border-top:1px solid var(--line)}
 .saved-posts li>p {white-space:pre-wrap}
