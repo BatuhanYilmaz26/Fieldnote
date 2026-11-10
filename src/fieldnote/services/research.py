@@ -15,6 +15,11 @@ from fieldnote.services.urls import canonicalize_url
 
 _WORD = re.compile(r"[^\W_](?:[^\W_]|['’-]){1,40}")
 _NUMBER = re.compile(r"\b\d+(?:[.,]\d+)?%?\b")
+_STOP_ERRORS = frozenset({
+    "research_authentication_failed", "research_policy_denied",
+    "research_cost_policy_violation", "research_budget_exhausted",
+    "research_billing_unknown", "research_route_cap_exceeded",
+})
 _STOP = frozenset(
     "the and for with from that this into about your you our their its are was were will "
     "have has been being over under more most less least than then when where which while "
@@ -223,12 +228,7 @@ class ResearchCoordinator:
                     query, max_results=self.limits.max_results_per_query
                 )
             except ProviderError as exc:
-                if exc.code in {
-                    "research_authentication_failed",
-                    "research_policy_denied",
-                    "research_cost_policy_violation",
-                    "research_budget_exhausted",
-                }:
+                if exc.code in _STOP_ERRORS:
                     raise
                 outcome.failures.append({"stage": "search", "code": exc.code})
                 continue
@@ -258,12 +258,7 @@ class ResearchCoordinator:
             try:
                 extracted = await self.gateway.extract(str(result["url"]))
             except ProviderError as exc:
-                if exc.code in {
-                    "research_authentication_failed",
-                    "research_policy_denied",
-                    "research_cost_policy_violation",
-                    "research_budget_exhausted",
-                }:
+                if exc.code in _STOP_ERRORS:
                     raise
                 outcome.failures.append({"stage": "extract", "code": exc.code})
                 continue

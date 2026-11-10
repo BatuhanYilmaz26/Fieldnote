@@ -112,6 +112,9 @@ Treg is the implemented research service. The worker enables it only with
 `TREG_TOKEN`. The qualified route uses `tinyfish.web.search` and
 `tinyfish.web.fetch`; free-only requests use a zero route-cost cap and disable
 paid fallback. A paid or unknown charge is rejected. Fixture mode never calls it.
+Unknown billing or a charge exceeding the route cap stops the entire research
+collection before another query or page request can be sent. Ordinary missing
+pages can still produce a bounded, explicitly incomplete evidence pack.
 
 The worker checks the run's cancellation state, deadline and execution lease
 before each search or page extraction. Losing permission to continue stops
