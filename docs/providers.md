@@ -150,3 +150,7 @@ not prevent rebinding.
 
 Citation rendering preserves source title, ledger URL and retrieval time. Human
 edits must not inherit the previous generated revision's review approval.
+
+New excerpt IDs include their source, exact content hash and locator. Identical
+text at two URLs retains both source associations. Previously saved excerpt IDs
+remain readable; this identity scheme does not rewrite existing revisions.

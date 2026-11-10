@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from fieldnote.domain.models import excerpt_identity
 from fieldnote.providers.base import ProviderError
 from fieldnote.services.urls import canonicalize_url, resolve_public_url, validate_public_url
 
@@ -245,6 +246,7 @@ class TregResearchGateway:
         title = str(row.get("title") or urlsplit(final).hostname or "Source")[:240].strip() or "Source"
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
         source_id = "src_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+        locator = f"characters 0:{len(text)} of fetched Markdown"
         flags = ("possible_instruction_injection",) if _INJECTION.search(text) else ()
         published = _date(row.get("published_date"))
         return {
@@ -261,10 +263,10 @@ class TregResearchGateway:
                 "extraction_state": "extracted",
             },
             "excerpt": {
-                "id": "excerpt_" + digest[:16],
+                "id": excerpt_identity(source_id, digest, locator),
                 "source_id": source_id,
                 "text": text,
-                "locator": f"characters 0:{len(text)} of fetched Markdown",
+                "locator": locator,
                 "content_hash": digest,
                 "source_kind": "body",
                 "flags": list(flags),

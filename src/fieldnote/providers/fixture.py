@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+from fieldnote.domain.models import excerpt_identity
 from fieldnote.providers.base import ModelResult, ModelT, ProviderError
 from fieldnote.services.urls import validate_public_url
 
@@ -90,6 +91,7 @@ class FixtureResearchGateway:
         text = page["text"][:20_000]
         content_hash = hashlib.sha256(text.encode()).hexdigest()
         source_id = "src_" + hashlib.sha256(url.encode()).hexdigest()[:16]
+        locator = f"characters 0:{len(text)} in synthetic fixture"
         return {
             "source": {
                 "id": source_id,
@@ -101,10 +103,10 @@ class FixtureResearchGateway:
                 "extraction_state": "extracted",
             },
             "excerpt": {
-                "id": "excerpt_" + content_hash[:16],
+                "id": excerpt_identity(source_id, content_hash, locator),
                 "source_id": source_id,
                 "text": text,
-                "locator": f"characters 0:{len(text)} in synthetic fixture",
+                "locator": locator,
                 "content_hash": content_hash,
                 "source_kind": "body",
             },

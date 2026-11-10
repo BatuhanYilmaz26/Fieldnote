@@ -31,6 +31,7 @@ from fieldnote.domain import (
 )
 from fieldnote.domain.editorial import editorial_instruction
 from fieldnote.domain.languages import language_profile, writing_instruction
+from fieldnote.domain.models import excerpt_identity
 from fieldnote.providers.base import ModelGateway, ModelResult, ModelT
 from fieldnote.providers.fixture import FixtureGateway, FixtureResearchGateway
 from fieldnote.services.citations import CitationError, render_citations, validate_citations
@@ -499,7 +500,11 @@ def make_fixture_dependencies(
     import hashlib
 
     source_id = "src_" + hashlib.sha256(page_url.encode()).hexdigest()[:16]
-    excerpt_id = "excerpt_" + hashlib.sha256(corpus[page_url]["text"].encode()).hexdigest()[:16]
+    content = corpus[page_url]["text"]
+    excerpt_id = excerpt_identity(
+        source_id, hashlib.sha256(content.encode()).hexdigest(),
+        f"characters 0:{len(content)} in synthetic fixture",
+    )
     researched = determine_research(request).need_research
     profile = language_profile(request.language)
     first = request.target_words // 2

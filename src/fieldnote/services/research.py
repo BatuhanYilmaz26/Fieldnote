@@ -272,6 +272,14 @@ class ResearchCoordinator:
             if not source_id or not excerpt_id:
                 outcome.failures.append({"stage": "extract", "code": "research_invalid_response"})
                 continue
+            if str(excerpt.get("source_id", "")) != source_id:
+                raise ProviderError("research_evidence_identity_conflict")
+            previous = outcome.excerpts.get(excerpt_id)
+            if previous is not None and any(
+                previous.get(key) != excerpt.get(key)
+                for key in ("source_id", "content_hash", "locator", "text")
+            ):
+                raise ProviderError("research_evidence_identity_conflict")
             text = str(excerpt.get("text", ""))
             estimated = max(1, math.ceil(len(text.encode("utf-8")) / 4))
             if (len(text) > self.limits.max_chars_per_page

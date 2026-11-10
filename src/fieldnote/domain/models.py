@@ -40,6 +40,17 @@ def markdown_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def excerpt_identity(source_id: str, content_hash: str, locator: str) -> str:
+    """Identify new evidence by source, exact content and location.
+
+    Existing persisted IDs remain valid; this does not rewrite historical rows.
+    """
+    import json
+
+    identity = json.dumps([source_id, content_hash, locator], ensure_ascii=False, separators=(",", ":"))
+    return "excerpt_" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+
+
 def _utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("A timezone-aware timestamp is required")
