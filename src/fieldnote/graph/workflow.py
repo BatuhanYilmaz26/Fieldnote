@@ -237,6 +237,7 @@ def build_graph(dependencies: GraphDependencies) -> StateGraph:
                     max_pages=deps.max_extracted_pages,
                     max_evidence_tokens=deps.max_evidence_tokens,
                 ),
+                check_active=deps.check_active,
             )
             outcome = await coordinator.collect(
                 state["decision"]["queries"], goal=deps.request.topic,

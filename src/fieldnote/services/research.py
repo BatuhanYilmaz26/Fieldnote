@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -178,9 +179,16 @@ def flag_conflicts(excerpts: dict[str, dict[str, Any]]) -> None:
 class ResearchCoordinator:
     """Execute at most four queries and eight extractions per required run."""
 
-    def __init__(self, gateway: ResearchGateway, limits: ResearchLimits | None = None) -> None:
+    def __init__(
+        self,
+        gateway: ResearchGateway,
+        limits: ResearchLimits | None = None,
+        *,
+        check_active: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         self.gateway = gateway
         self.limits = limits or ResearchLimits()
+        self.check_active = check_active
 
     async def collect(
         self,
@@ -206,6 +214,10 @@ class ResearchCoordinator:
             normalized = canonicalize_url(url)
             candidates[normalized] = {"url": normalized, "_rank": 100, "selected_by_author": True}
         for query in bounded:
+            # Admission errors must escape page-failure handling. The worker
+            # checks durable cancellation, deadline and lease ownership here.
+            if self.check_active is not None:
+                await self.check_active()
             try:
                 found = await self.gateway.search(
                     query, max_results=self.limits.max_results_per_query
@@ -241,6 +253,8 @@ class ResearchCoordinator:
             outcome.truncated = True
         used_tokens = 0
         for result in ranked[: self.limits.max_pages]:
+            if self.check_active is not None:
+                await self.check_active()
             try:
                 extracted = await self.gateway.extract(str(result["url"]))
             except ProviderError as exc:
