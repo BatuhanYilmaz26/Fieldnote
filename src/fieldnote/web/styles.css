@@ -2193,6 +2193,18 @@ label:has(input[type='checkbox']) {display:flex;align-items:center;min-height:44
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after {animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
+
+.task-switch,.channel-switch {display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px}
+.task-switch {border-bottom:1px solid var(--line);padding-bottom:16px}
+.task-switch [aria-pressed='true'],.channel-switch [aria-pressed='true'] {border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+body[data-task='publish'] .draft-grid {grid-template-columns:minmax(0,1fr);max-width:960px}
+body[data-task='publish'] #inspector {display:none}
+#publishing-surface {border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.platform-preview {border:1px solid var(--line);border-radius:8px;min-height:0;padding:24px;margin-top:24px}
+.saved-posts {padding-left:24px;margin:24px 0}
+.saved-posts li {padding:20px 0;border-top:1px solid var(--line)}
+.saved-posts li>p {white-space:pre-wrap}
+.saved-posts li>button {margin-top:12px}
 @media (forced-colors:active) {
   button,.pill,.brand-mark,input,textarea,select {border:1px solid ButtonText}
   .nav-item[aria-current='page'],.tab[aria-selected='true'] {outline:2px solid Highlight}

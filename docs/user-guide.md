@@ -281,7 +281,7 @@ Saved Markdown can contain up to 200,000 characters, including non-English text.
 
 ## Prepare to publish
 
-Open **Prepare to publish** below a saved article. **Save publication package** prepares LinkedIn and X drafts from whole sentences in that revision, without model calls. These extracts are a starting point for editing: check the opening, technical context and caveats. The suggested LinkedIn length is 120–200 words, with a [3,000-character platform limit](https://www.linkedin.com/help/linkedin/answer/a528176). The workspace counts UTF-16 units conservatively for supplementary characters.
+Choose **Prepare to publish** beside **Write & review** above a saved article. This opens a dedicated task surface with Medium, LinkedIn and X views. **Save publication package** prepares LinkedIn and X drafts from whole sentences in that revision, without model calls. These extracts are a starting point for editing: check the opening, technical context and caveats. The suggested LinkedIn length is 120–200 words, with a [3,000-character platform limit](https://www.linkedin.com/help/linkedin/answer/a528176). The workspace counts UTF-16 units conservatively for supplementary characters.
 
 Choose a single X post or a 3–5-post thread. **Replace drafts with article extracts** regenerates these local extracts and clears the publishing checklist. It can produce fewer posts if the article has too few suitable short sentences; the workspace reports that limitation. You can edit the result, separating posts with a line containing `---`. Each post is validated against the [standard weighted 280-character rules](https://docs.x.com/fundamentals/counting-characters), including numbering, URL shortening and the versioned parser's emoji/Unicode data. New emoji sequences or TLD changes can require a parser update; double-check the platform composer near its limit.
 
@@ -293,13 +293,18 @@ Editing platform text clears its fact/context checks; changing the disclosure cl
 
 ### Copy and download
 
-Use the copy buttons for article, LinkedIn or X plain text, or **Download text bundle** for a ZIP containing:
+The Medium view offers **Copy title**, **Copy formatted body** and **Copy body text**. The body omits the first article H1 and retains the disclosure. Formatted copying supplies HTML and plain text; if the browser cannot write HTML, it tries plain text and tells you which format was copied. Inspect formatting after pasting into the destination editor. Older saved packages remain readable; save a new package to obtain the separate body fields.
+
+The LinkedIn view keeps its independently editable draft. The X view shows each saved post in order, with its server-validated weighted count and a separate copy button. **Copy thread as text** includes separators for reference; it does not import a native thread. Save variant edits before copying. Unsaved article/package edits, stale assessments and revision mismatches disable copy/download controls.
+
+Use **Download text bundle** for a ZIP containing:
 
 - `article-original.md`: the exact saved article, matching its revision hash.
 - `medium.md`: the article with the selected disclosure near the beginning.
 - `article.txt` and `article.html`: plain text and an escaped reading/copy document. Open the HTML file to copy its rendered text into an editor, then inspect formatting on the destination platform.
 - `linkedin.txt` and `x-*.txt`: the selected social drafts, where those destinations were selected.
 - `references.json`, `manifest.json` and `HANDOFF.txt`: source metadata, file hashes, revision/language/provenance and review reminders.
+- New packages also include `title.txt`, `medium-body.html` and `medium-body.txt` for separate title/body handoff. The original article remains unchanged.
 
 The package does not include private brief observations, credentials or configuration. Article content itself can contain observations you chose to include, so review it before sharing. Image generation is deferred; exports are text-only.
 

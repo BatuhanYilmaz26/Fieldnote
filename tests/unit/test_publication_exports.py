@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from fieldnote.domain import markdown_hash
 from fieldnote.domain.publishing import PublicationRequest
 from fieldnote.services.publishing import (
+    article_body,
     article_html,
     build_publication,
     publication_zip,
@@ -52,6 +53,10 @@ async def test_bundle_preserves_revision_bytes_and_excludes_private_brief_notes(
     package = {"id": str(uuid4()), "data": data, "created_at": data["created_at"], "stale": True}
     archive = zipfile.ZipFile(io.BytesIO(publication_zip(package)))
     assert archive.read("article-original.md").decode() == item["markdown"]
+    assert archive.read("title.txt").decode() == data["title"]
+    assert archive.read("medium-body.html").decode() == data["medium_body_html"]
+    assert "<h1>" not in data["medium_body_html"]
+    assert data["medium_body_text"].startswith(data["disclosure"])
     manifest = json.loads(archive.read("manifest.json"))
     assert manifest["stale"] and not manifest["ready"]
     for name, digest in manifest["files"].items():
@@ -76,6 +81,27 @@ def test_html_export_escapes_authored_markup_and_retains_code():
     assert "<script>" not in output and "<img " not in output
     assert "&lt;script&gt;" in output and "<pre><code>" in output
     assert "default-src 'none'" in output
+
+
+def test_separate_body_keeps_code_headings_disclosure_and_later_headings():
+    markdown = "```markdown\n# Code, not the title\n```\n\n# Article title\n\n## A section\n\n# A later heading\n"
+    body = article_body(markdown)
+    assert "# Code, not the title" in body
+    assert "# Article title" not in body
+    assert "## A section" in body and "# A later heading" in body
+    assert article_body("No heading.\n\nKeep this body.") == "No heading.\n\nKeep this body."
+
+
+def test_old_immutable_packages_export_without_new_handoff_fields():
+    item = article()
+    data = build_publication(item, PublicationRequest(content_hash=item["content_hash"]), {})
+    data.pop("medium_body_text")
+    data.pop("medium_body_html")
+    data["schema_version"] = 1
+    package = {"id": str(uuid4()), "data": data, "created_at": data["created_at"]}
+    archive = zipfile.ZipFile(io.BytesIO(publication_zip(package)))
+    assert "title.txt" not in archive.namelist()
+    assert archive.read("article-original.md").decode() == item["markdown"]
 
 
 def test_vendored_counter_source_matches_reviewed_manifest():

@@ -1,5 +1,5 @@
 // Publication controls use saved revision identities; no external posting.
-export function createPublishingController({ api, state, showError, announce }) {
+export function createPublishingController({ api, state, showError, announce, renderMarkdown }) {
   const $ = (id) => document.getElementById(id);
   const checks = ["facts_checked", "voice_checked", "language_checked", "variants_checked", "disclosure_checked"];
   let current = null;
@@ -8,16 +8,36 @@ export function createPublishingController({ api, state, showError, announce }) 
   let busy = false;
   const base = () => `/api/v1/runs/${state.activeRun}`;
   const active = () => `${state.activeRun}:${state.article?.id}:${state.article?.assessment?.review_run_id || "generation"}`;
+  const copyAllowed = () => current && !current.stale && !busy && !state.saving
+    && !state.editorDirty && !state.publicationDirty
+    && current.data.revision_id === state.article?.id
+    && current.data.content_hash === state.article?.content_hash;
+
+  async function copyText(text, packageId = current?.id) {
+    if (!copyAllowed() || packageId !== current.id) return;
+    try { await navigator.clipboard.writeText(text); announce("Saved publication text copied."); }
+    catch { announce("Clipboard access is unavailable. Download the text package instead."); }
+  }
+
+  function selectChannel(channel) {
+    for (const name of ["medium", "linkedin", "x"]) {
+      $("channel-" + name).hidden = name !== channel;
+      $("channel-" + name + "-button").setAttribute("aria-pressed", String(name === channel));
+    }
+  }
 
   function update() {
     const latest = state.revisions[0]?.id === state.article?.id;
     $("prepare-package").disabled = busy || state.editorDirty || state.saving || !latest;
     $("replace-extracts").disabled = busy || state.editorDirty || !latest;
-    $("publication-download").hidden = !current || state.editorDirty || state.publicationDirty;
+    $("publication-download").hidden = !copyAllowed();
     $("publication-save-hint").textContent = state.editorDirty ? "Save the article before preparing publication."
       : state.publicationDirty ? "Publication edits are unsaved. Save a package before copying or downloading."
+        : current?.stale ? "This package is stale. Save a new package for the current article and assessment before copying."
+          : current && !current.data.medium_body_html ? "Older package: text includes the title. Save a new package for separate title and formatted body."
         : "Each saved package preserves one exact article revision. No content is posted automatically.";
-    for (const id of ["copy-publication-article", "copy-linkedin", "copy-x"]) $(id).disabled = !current || state.editorDirty || state.publicationDirty;
+    for (const button of document.querySelectorAll("[data-package-copy]")) button.disabled = !copyAllowed();
+    $("copy-publication-formatted").disabled = !copyAllowed() || !current.data.medium_body_html;
     $("record-publication").disabled = !current || busy;
   }
 
@@ -28,6 +48,18 @@ export function createPublishingController({ api, state, showError, announce }) 
     $("publication-drafts").hidden = false;
     $("linkedin-draft").value = data.linkedin_text;
     $("x-drafts").value = data.x_posts.join("\n---\n");
+    renderMarkdown($("medium-preview"), data.medium_markdown);
+    $("saved-x-posts").replaceChildren();
+    for (const [index, post] of data.x_posts.entries()) {
+      const item = document.createElement("li");
+      const text = document.createElement("p"); text.textContent = post;
+      const count = document.createElement("p"); count.className = "help";
+      count.textContent = `Post ${index + 1} of ${data.x_posts.length} · ${data.counts.x[index].weighted_length}/280 weighted characters (saved)`;
+      const copy = document.createElement("button"); copy.type = "button"; copy.className = "secondary";
+      copy.textContent = `Copy post ${index + 1}`; copy.setAttribute("data-package-copy", "");
+      copy.addEventListener("click", () => copyText(post, value.id));
+      item.append(count, text, copy); $("saved-x-posts").append(item);
+    }
     $("publication-canonical").value = data.canonical_url || "";
     $("publication-disclosure").value = data.disclosure;
     $("search-title").value = data.discovery?.search_title || data.title;
@@ -109,6 +141,9 @@ export function createPublishingController({ api, state, showError, announce }) 
   }
 
   $("prepare-package").addEventListener("click", () => prepare());
+  for (const channel of ["medium", "linkedin", "x"]) {
+    $("channel-" + channel + "-button").addEventListener("click", () => selectChannel(channel));
+  }
   $("replace-extracts").addEventListener("click", () => prepare(true));
   for (const id of ["linkedin-draft", "x-drafts", "publication-canonical", "publication-disclosure", "publication-thread", "search-title", "search-description", ...checks.map((key) => "publication-" + key)]) {
     $(id).addEventListener("input", () => {
@@ -128,12 +163,31 @@ export function createPublishingController({ api, state, showError, announce }) 
     try { const value = await api(`${base()}/packages/${id}`); if (expected === active()) showPackage(value); }
     catch (error) { showError(error); }
   });
-  for (const [id, text] of [["copy-publication-article", () => current.data.article_text], ["copy-linkedin", () => current.data.linkedin_text], ["copy-x", () => current.data.x_posts.join("\n\n---\n\n")]]) {
-    $(id).addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(text()); announce("Saved publication text copied."); }
-      catch { announce("Clipboard access is unavailable. Download the text package instead."); }
+  for (const [id, text] of [["copy-publication-title", () => current.data.title],
+    ["copy-publication-article", () => current.data.medium_body_text || current.data.article_text],
+    ["copy-linkedin", () => current.data.linkedin_text], ["copy-x", () => current.data.x_posts.join("\n\n---\n\n")]]) {
+    $(id).addEventListener("click", () => {
+      if (copyAllowed()) return copyText(text());
     });
   }
+  $("copy-publication-formatted").addEventListener("click", async () => {
+    if (!copyAllowed() || !current.data.medium_body_html) return;
+    const value = current;
+    try {
+      if (typeof ClipboardItem === "undefined" || !navigator.clipboard.write) throw new Error("plain_text_fallback");
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": new Blob([value.data.medium_body_html], {type: "text/html"}),
+        "text/plain": new Blob([value.data.medium_body_text], {type: "text/plain"}),
+      })]);
+      announce("Formatted article body copied. Check formatting in the destination editor.");
+    } catch {
+      if (!copyAllowed() || value.id !== current.id) return;
+      try {
+        await navigator.clipboard.writeText(value.data.medium_body_text);
+        announce("Formatted copying is unavailable. Article body copied as plain text.");
+      } catch { announce("Clipboard access is unavailable. Download the text package instead."); }
+    }
+  });
   $("record-publication").addEventListener("click", async () => {
     if (!current) return;
     const expected = active();

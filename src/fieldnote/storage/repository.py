@@ -157,7 +157,8 @@ class Repository:
             if not article or article["content_hash"] != content_hash:
                 raise StorageError("revision_conflict", "The saved article no longer matches this package.")
             digest = canonical_hash({"inputs": inputs, "assessment_review_id": data.get("assessment_review_id"),
-                                     "article_review_status": data.get("article_review_status")})
+                                     "article_review_status": data.get("article_review_status"),
+                                     "package_schema_version": data.get("schema_version", 1)})
             existing = await (await connection.execute(
                 "SELECT * FROM publication_packages WHERE revision_id=%s AND input_hash=%s",
                 (_uuid(revision_id), digest),

@@ -68,6 +68,18 @@ def article_html(markdown: str, title: str) -> str:
             "<title>" + html.escape(title) + "</title></head><body>" + markdown_html(markdown) + "</body></html>")
 
 
+def article_body(markdown: str) -> str:
+    """Remove only the first prose H1 for editors with a separate title field."""
+    lines = markdown.splitlines(keepends=True)
+    in_code = False
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+        elif not in_code and re.match(r"^ {0,3}#\s+", line):
+            return "".join(lines[:index] + lines[index + 1:]).strip()
+    return markdown.strip()
+
+
 def _paragraphs(raw: str) -> list[str]:
     # Do not turn code, headings or partial lines into factual social claims.
     text = re.sub(r"(?m)^[^\n]{1,100}:\n\n?(?=```)", "", raw)
@@ -151,6 +163,7 @@ def build_publication(article: dict, request: PublicationRequest, brief: dict) -
     synthetic = any(str(s.get("provider", "")).startswith("fixture") for s in sources.values()) or "synthetic_fixture" in str(article.get("issues", []))
     disclosure = request.disclosure or DISCLOSURES[language]
     medium = disclosure + "\n\n" + article["markdown"]
+    medium_body = disclosure + "\n\n" + article_body(article["markdown"])
     warnings = [
         "Review social extracts for missing caveats and context; length validation is not factual approval.",
         "Medium requires disclosure for generated text. AI-generated writing cannot be paywalled in its Partner Program.",
@@ -167,7 +180,7 @@ def build_publication(article: dict, request: PublicationRequest, brief: dict) -
         warnings.append("There were too few short source sentences for the requested thread; edit the post list yourself.")
     checklist = {key: getattr(request, key) for key in ("facts_checked", "voice_checked", "language_checked", "variants_checked", "disclosure_checked")}
     return {
-        "schema_version": 1, "revision_id": article["id"], "content_hash": article["content_hash"],
+        "schema_version": 2, "revision_id": article["id"], "content_hash": article["content_hash"],
         "language": language, "editorial_profile": brief.get("editorial_profile", "standard"),
         "title": title_text, "created_at": datetime.now(UTC).isoformat(),
         "discovery": discovery,
@@ -175,6 +188,7 @@ def build_publication(article: dict, request: PublicationRequest, brief: dict) -
         "canonical_url": request.canonical_url, "disclosure": disclosure,
         "article_markdown": article["markdown"], "medium_markdown": medium,
         "article_text": plain_markdown(medium), "article_html": article_html(medium, title_text),
+        "medium_body_text": plain_markdown(medium_body), "medium_body_html": markdown_html(medium_body),
         "linkedin_text": linkedin, "x_posts": posts,
         "counts": {"linkedin": linkedin_count(linkedin), "x": counts},
         "references": references, "warnings": warnings, "checklist": checklist,
@@ -194,6 +208,9 @@ def publication_zip(package: dict) -> bytes:
              "references.json": json.dumps(data["references"], ensure_ascii=False, indent=2)}
     if "discovery" in data:  # Older immutable packages retain their original contents.
         files["discovery.json"] = json.dumps(data["discovery"], ensure_ascii=False, indent=2)
+    if "medium_body_html" in data:
+        files.update({"title.txt": data["title"], "medium-body.html": data["medium_body_html"],
+                      "medium-body.txt": data["medium_body_text"]})
     if "linkedin" in data["destinations"]:
         files["linkedin.txt"] = data["linkedin_text"]
     if "x" in data["destinations"]:
@@ -202,6 +219,9 @@ def publication_zip(package: dict) -> bytes:
         "Review every claim, example, disclosure and platform variant before posting manually.\n"
         "article-original.md preserves the saved article bytes; medium.md adds the disclosure.\n"
         "Keep the disclosure near the beginning. Set your canonical URL in Medium if cross-posting.\n"
+        + ("title.txt is for the title field; medium-body.html/txt omit the first article H1.\n"
+           "Use the HTML body for formatted pasting where supported; inspect links, lists and code afterward.\n"
+           if "medium_body_html" in data else "")
         + ("discovery.json contains search metadata suggestions, not platform settings or factual approval.\n"
            "Set title/description in your destination editor where supported, then inspect the preview.\n"
            "Check headings, lists and code formatting after pasting into Medium. No ranking or AI citation is guaranteed.\n"

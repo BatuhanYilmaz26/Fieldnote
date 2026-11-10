@@ -1,4 +1,4 @@
-import { createPublishingController } from "./publishing.js";
+import { createPublishingController } from "./publishing.js?handoff=1";
 import { migratePreferences } from "./preferences.js";
 let publishing;
 // Fieldnote browser client.
@@ -159,6 +159,16 @@ function setFocusMode(enabled) {
   document.body.dataset.focus = String(enabled);
   $("focus-toggle").setAttribute("aria-pressed", String(enabled));
   $("focus-toggle").textContent = enabled ? "Exit focus mode" : "Focus mode";
+}
+
+function setDraftTask(task) {
+  state.draftTask = task;
+  const publication = task === "publish" && Boolean(state.article);
+  document.body.dataset.task = publication ? "publish" : "write";
+  $("writing-surface").hidden = publication;
+  $("publishing-surface").hidden = !publication;
+  $("writing-task").setAttribute("aria-pressed", String(!publication));
+  $("publishing-task").setAttribute("aria-pressed", String(publication));
 }
 
 function showWorkspace(view, focus = false) {
@@ -1116,6 +1126,8 @@ function renderRevisionOptions() {
 
 function renderArticle() {
   const article = state.article;
+  $("draft-task-tools").hidden = false;
+  setDraftTask(state.draftTask || "write");
   $("article-view").hidden = false;
   $("draft-loading").hidden = true;
   const wordCount = article.markdown.trim().split(/\s+/).filter(Boolean).length;
@@ -1184,6 +1196,8 @@ async function selectRun(id, options = {}) {
   state.activeRun = id;
   state.run = null;
   state.article = null;
+  $("draft-task-tools").hidden = true;
+  setDraftTask("write");
   state.revisions = [];
   state.ledger = new Map();
   state.lastEventId = 0;
@@ -1485,7 +1499,9 @@ async function refreshTopics() {
 }
 
 function wireEvents() {
-  publishing = createPublishingController({ api, state, showError, announce });
+  publishing = createPublishingController({ api, state, showError, announce, renderMarkdown });
+  $("writing-task").addEventListener("click", () => setDraftTask("write"));
+  $("publishing-task").addEventListener("click", () => { setFocusMode(false); setDraftTask("publish"); });
   $("refresh-topics").addEventListener("click", refreshTopics);
   $("new-draft").addEventListener("click", () => openComposer(true));
   $("library-new").addEventListener("click", () => openComposer(true));

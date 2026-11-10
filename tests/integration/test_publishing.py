@@ -11,6 +11,43 @@ from tests.integration.test_api import enqueue, run_one_fixture_job
 pytestmark = pytest.mark.asyncio
 
 
+async def test_new_handoff_schema_does_not_reuse_or_rewrite_old_package(api_client, acceptance_database):
+    from uuid import uuid4
+
+    from psycopg.types.json import Jsonb
+
+    from fieldnote.domain.publishing import PublicationRequest
+    from fieldnote.storage.repository import canonical_hash
+
+    client, app = api_client
+    run_id = (await enqueue(client, key="handoff-upgrade"))["id"]
+    await run_one_fixture_job(acceptance_database)
+    base = f"/api/v1/runs/{run_id}"
+    article = (await client.get(base + "/article")).json()
+    route = base + f"/revisions/{article['id']}/packages"
+    payload = {"content_hash": article["content_hash"]}
+    initial = (await client.post(route, json=payload)).json()
+    old = dict(initial["data"])
+    old.pop("medium_body_html")
+    old.pop("medium_body_text")
+    old["schema_version"] = 1
+    # Represent a version-one row's old deduplication identity. Only test data
+    # is seeded; production code must never rewrite immutable package contents.
+    old_id = str(uuid4())
+    old_digest = canonical_hash({"inputs": PublicationRequest(**payload).model_dump(mode="json"),
+        "assessment_review_id": old.get("assessment_review_id"), "article_review_status": old["article_review_status"]})
+    async with app.state.repository.pool.connection() as connection:
+        await connection.execute("INSERT INTO publication_packages(id,run_id,revision_id,content_hash,input_hash,data) VALUES (%s,%s,%s,%s,%s,%s)",
+            (old_id, run_id, article["id"], article["content_hash"], old_digest, Jsonb(old)))
+        await connection.commit()
+    newer = (await client.post(route, json=payload)).json()
+    assert newer["id"] != old_id and newer["data"]["schema_version"] == 2
+    assert "medium_body_html" in newer["data"]
+    assert (await client.post(route, json=payload)).json()["id"] == newer["id"]
+    retained = (await client.get(base + f"/packages/{old_id}")).json()
+    assert retained["data"] == old
+
+
 async def test_prepare_edit_export_record_and_stale_package(api_client, acceptance_database):
     client, app = api_client
     run_id = (await enqueue(client, key="publishing", author_notes="PRIVATE_NOTES_8412"))["id"]
