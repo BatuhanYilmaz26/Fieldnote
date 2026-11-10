@@ -4,39 +4,41 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#f5f6fa">
+  <meta name="theme-color" content="#f5f7f9">
   <meta name="description" content="A focused writing studio for thoughtful briefs, traceable sources and drafts worth reviewing.">
   <title>Fieldnote — Writing studio</title>
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <link rel="preload" href="/assets/fonts/Manrope-Variable.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/assets/styles.css">
-  <script type="module" src="/assets/app.js"></script>
+  <link rel="stylesheet" href="/assets/styles.css?desk=3">
+  <script type="module" src="/assets/app.js?desk=3"></script>
 </head>
 <body data-workspace="compose">
   <a class="skip" href="#main">Skip to workspace</a>
   <div class="app">
     <aside id="sidebar" class="sidebar" aria-label="Workspace navigation">
+      <button id="navigation-close" type="button" class="icon-button navigation-close" aria-label="Close navigation"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#close"></use></svg></button>
       <a class="brand" href="/" aria-label="Fieldnote home">
         <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" width="24" height="24" focusable="false"><path d="M10 24V8h12M10 16h9" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="25" cy="24" r="2.4" fill="currentColor"></circle></svg></span>
-        <span>Fieldnote<span class="brand-caption">A little more considered.</span></span>
+        <span>Fieldnote</span>
       </a>
       <button id="new-draft" type="button" class="new-draft"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#plus"></use></svg> New draft</button>
       <nav class="primary-nav" aria-label="Main navigation">
-        <button id="nav-studio" class="nav-item" type="button" aria-current="page"><svg class="icon nav-symbol" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#studio"></use></svg>Writing studio<span class="nav-dot" aria-hidden="true"></span></button>
+        <button id="nav-studio" class="nav-item" type="button" aria-current="page"><svg class="icon nav-symbol" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#studio"></use></svg>Writing studio</button>
         <button id="nav-library" class="nav-item" type="button"><svg class="icon nav-symbol" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#document"></use></svg>Draft library<span id="library-count" class="nav-count">0</span></button>
       </nav>
       <div class="sidebar-divider"></div>
       <section class="recent-section" aria-labelledby="history-title">
         <div class="sidebar-heading"><h2 id="history-title">Recent drafts</h2><button id="refresh" type="button" class="icon-button" aria-label="Refresh drafts"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#refresh"></use></svg></button></div>
-        <ul id="history" class="history-list"><li class="history-placeholder">Your next idea has a home here.</li></ul>
+        <ul id="history" class="history-list"><li class="history-placeholder">Loading recent drafts…</li></ul>
         <button id="view-library" class="text-button sidebar-link" type="button">View draft library <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#arrow-up"></use></svg></button>
       </section>
       <div class="sidebar-bottom">
-        <div class="workspace-account"><span class="workspace-avatar" aria-hidden="true">W</span><div><strong>Your workspace</strong><span>Local · Private by default</span></div><span class="account-dot" aria-hidden="true"></span></div>
-        <p>Your drafts, sources and revisions.<br>All in one place.</p>
+        <div class="workspace-account"><span class="workspace-avatar" aria-hidden="true">W</span><div><strong>Your workspace</strong><span>Local workspace</span></div></div>
+
       </div>
     </aside>
 
+    <button id="navigation-scrim" class="navigation-scrim" type="button" aria-label="Close navigation" tabindex="-1" hidden></button>
     <div class="app-stage">
       <header class="app-bar">
         <div class="breadcrumb"><button id="menu-toggle" class="icon-button menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#menu"></use></svg></button><span class="breadcrumb-root">Workspace</span><span class="breadcrumb-divider" aria-hidden="true">/</span><strong id="workspace-label">Writing studio</strong></div>
@@ -46,13 +48,9 @@
         <div class="workspace-message"><p id="notice" class="notice" role="status"><span id="notice-icon" class="notice-icon" aria-hidden="true">i</span><span id="notice-text">Connecting to your workspace…</span></p><p id="error" class="error" role="alert" tabindex="-1" hidden></p><p id="live" class="visually-hidden" role="status" aria-live="polite"></p></div>
 
         <section id="composer-view" class="composer-view" aria-labelledby="page-title">
-          <div id="empty" class="studio-intro">
-            <div><p class="eyebrow"><span class="eyebrow-line" aria-hidden="true"></span>The writing studio</p><h1 id="page-title">An idea, <span>well written.</span></h1><p class="intro-copy">Start with a clear brief. Keep your sources close.</p></div>
-            <div class="paper-scene" aria-hidden="true"><div class="paper paper-back"></div><div class="paper paper-front"><span class="paper-wordmark">Aa<span>✳</span></span><span class="paper-rule long"></span><span class="paper-rule"></span><span class="paper-rule medium"></span><span class="paper-note">a clearer point of view</span><span class="paper-rule long"></span><span class="paper-rule medium"></span><span class="paper-page">01 / A new perspective</span></div><span class="scene-label"><span></span>Room for your next idea</span></div>
-          </div>
-          <details class="topic-discovery brief-sheet"><summary>Find your next technical topic</summary><p class="help">On-demand ideas from research and engineering feeds. Inspect original sources before drafting.</p><div class="actions"><label for="topic-window">Recent window</label><select id="topic-window"><option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="90">90 days</option></select><button id="refresh-topics" type="button" class="secondary">Refresh ideas</button></div><p id="topic-status" class="help" role="status" aria-live="polite">No automatic background refresh.</p><ul id="topic-ideas" class="topic-ideas"></ul></details>
+          <div id="empty" class="studio-intro"><h1 id="page-title">Writing studio</h1><p class="intro-copy">A clear brief, traceable sources and room for your perspective.</p></div>
           <form id="brief-form" class="brief-sheet" novalidate>
-            <div class="sheet-heading"><div><span class="section-number">01</span><h2 id="brief-title">Shape your brief</h2></div><span class="sheet-caption">The start of something good.</span></div>
+            <div class="composer-footer"><div><h2 id="brief-title">Article brief</h2><p>Your draft will be saved for review.</p></div><button id="submit" type="submit" class="primary-button" disabled><span id="submit-label">Create draft</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#arrow-up"></use></svg></button></div>
             <div class="brief-grid">
               <div class="brief-content">
                 <div class="field topic-field"><label for="topic">What should this draft cover?</label><textarea id="topic" name="topic" required maxlength="500" rows="3" aria-describedby="topic-help" placeholder="What changed in retrieval-augmented generation, and when does it matter?"></textarea><div class="field-meta"><p id="topic-help" class="help">The question, idea or story you want to explore.</p><span id="topic-count">0 / 500</span></div></div>
@@ -62,20 +60,19 @@
                 <details id="brief-extra" class="brief-extra"><summary>Additional direction <span class="optional">Optional</span></summary><div class="field instructions-field"><label for="instructions">Anything else?</label><textarea id="instructions" name="instructions" rows="3" maxlength="4000" aria-describedby="instructions-help" placeholder="An angle to take, a question to answer, something to leave out…"></textarea><p id="instructions-help" class="help">A few thoughtful details make a more useful draft.</p></div></details>
                 <div class="brief-output"><svg class="icon document-symbol" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#document"></use></svg><label for="language">Language</label><span class="select-wrap language-picker"><select id="language" name="language" aria-describedby="language-help"><option value="en" lang="en">English</option><option value="tr" lang="tr">Türkçe</option><option value="es" lang="es">Español</option><option value="pt" lang="pt">Português</option><option value="de" lang="de">Deutsch</option></select></span><span class="output-format">Editable Markdown</span></div><p id="language-help" class="visually-hidden">The article language. The workspace stays in English.</p>
               </div>
-              <aside class="brief-settings" aria-label="Draft preferences"><p class="settings-title">Make it yours</p>
+              <aside class="brief-settings" aria-label="Draft preferences"><p class="settings-title">Draft preferences</p>
                 <div class="field"><label for="audience">Reader</label><input id="audience" name="audience" maxlength="240" value="Technical practitioners" required autocomplete="off"></div>
                 <div class="field"><label for="editorial_profile">Writing style</label><span class="select-wrap"><select id="editorial_profile" name="editorial_profile"><option value="technical-v1" selected>Concise technical</option><option value="standard">General writing</option></select></span><p class="help">One useful idea, concrete examples and honest limitations.</p></div><div class="field"><label for="tone">Tone</label><span class="select-wrap"><select id="tone" name="tone"><option value="clear">Clear</option><option value="conversational">Conversational</option><option value="formal">Formal</option></select></span></div>
                 <div class="field"><label for="target_words">Target words</label><div class="word-input"><input id="target_words" name="target_words" type="number" min="200" max="3000" step="50" value="550" required inputmode="numeric"><span>words</span></div><div class="word-presets" aria-label="Quick word targets"><button type="button" data-words="350" aria-pressed="false">350</button><button type="button" data-words="550" aria-pressed="true">550</button><button type="button" data-words="800" aria-pressed="false">800</button></div></div>
                 <fieldset class="field"><legend>Prepare for</legend><label><input type="checkbox" id="destination-medium" checked> Medium</label><label><input type="checkbox" id="destination-linkedin" checked> LinkedIn</label><label><input type="checkbox" id="destination-x" checked> X / Twitter</label></fieldset><div class="field"><label for="research_mode">Research</label><span class="select-wrap"><select id="research_mode" name="research_mode" aria-describedby="research-help"><option value="required">Required</option><option value="auto">Automatic</option><option value="off">Off</option></select></span><p id="research-help" class="help">Keep source-dependent claims connected to evidence.</p><p id="research-warning" class="field-warning" role="status" aria-live="polite" hidden></p></div>
               </aside>
             </div>
-            <div class="composer-footer"><p><span class="small-lock" aria-hidden="true">◇</span>Saved to your workspace. Ready for your review.</p><button id="submit" type="submit" class="primary-button" disabled><span id="submit-label">Create draft</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#arrow-up"></use></svg></button></div>
           </form>
-          <div class="studio-footnote"><span>Brief <span aria-hidden="true">→</span> Sources <span aria-hidden="true">→</span> Draft <span aria-hidden="true">→</span> Your point of view</span><span>Thoughtful input. Traceable output.</span></div>
+          <details class="topic-discovery brief-sheet"><summary>Find your next technical topic</summary><p class="help">On-demand ideas from research and engineering feeds. Inspect original sources before drafting.</p><div class="actions"><label for="topic-window">Recent window</label><select id="topic-window"><option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="90">90 days</option></select><button id="refresh-topics" type="button" class="secondary">Refresh ideas</button></div><p id="topic-status" class="help" role="status" aria-live="polite">No automatic background refresh.</p><ul id="topic-ideas" class="topic-ideas"></ul></details>
         </section>
 
         <section id="library-view" class="library-view" aria-labelledby="library-title" hidden>
-          <div class="view-heading"><div><p class="eyebrow">Your body of work</p><h1 id="library-title">The draft library.</h1><p class="intro-copy">Pick up a thought right where you left it.</p></div><button id="library-new" class="primary-button" type="button">New draft <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#plus"></use></svg></button></div>
+          <div class="view-heading"><div><h1 id="library-title">Draft library</h1><p class="intro-copy">Reopen saved drafts and their revision history.</p></div><button id="library-new" class="primary-button" type="button">New draft <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#plus"></use></svg></button></div>
           <div class="library-toolbar"><div class="library-search"><span aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#search"></use></svg></span><label for="draft-search" class="visually-hidden">Search recent drafts</label><input id="draft-search" type="search" placeholder="Search recent drafts…" autocomplete="off"><kbd>Ctrl K</kbd></div><label class="visually-hidden" for="draft-filter">Filter drafts by status</label><select id="draft-filter"><option value="all">All statuses</option><option value="needs_review">Needs review</option><option value="succeeded">Generated</option><option value="running">In progress</option><option value="failed">Could not finish</option><option value="cancelled">Cancelled</option></select></div>
           <p id="library-summary" class="library-summary" role="status"></p><ul id="library-list" class="library-list"></ul><button id="more" type="button" class="secondary library-more" hidden>Load more drafts</button>
         </section>
@@ -93,7 +90,7 @@
                   <div id="preview-panel" role="tabpanel" aria-labelledby="preview-tab"><article id="preview" class="article" aria-label="Rendered article preview"></article></div>
                   <div id="edit-panel" role="tabpanel" aria-labelledby="edit-tab" hidden><label for="editor" id="editor-label" class="editor-label">Article Markdown</label><textarea id="editor" rows="22" maxlength="200000" spellcheck="true" aria-describedby="editor-help"></textarea><div class="editor-foot"><p id="editor-help" class="help">Your words, preserved as Markdown.</p><p id="editor-count" class="help" aria-live="polite"></p></div></div>
                   <div id="conflict" class="conflict" role="alert" hidden><p id="conflict-message"></p><div class="actions"><button id="conflict-reload" type="button" class="secondary">Reload latest draft</button><button id="conflict-save" type="button" class="primary-button">Save my text on the latest draft</button><button id="conflict-copy" type="button" class="secondary">Copy my text</button></div></div>
-                  <div class="save-row"><button id="save" type="button" class="primary-button" hidden>Save new revision</button><span class="document-note">A draft is a starting point. Your judgment is the final word.</span></div>
+                  <div class="save-row"><button id="save" type="button" class="primary-button" hidden>Save new revision</button><span class="document-note">Saved revisions preserve your text and review history.</span></div>
                   <details class="headline-panel"><summary>Title &amp; reading notes</summary><p class="help">A specific promise, supported by the article. Planning suggestions need your review; no click-through prediction is made.</p><div class="field"><label for="headline-options">Title suggestions</label><select id="headline-options"><option value="">Choose a planning suggestion</option></select></div><div class="field"><label for="article-headline">Article title</label><input id="article-headline" maxlength="240" aria-describedby="headline-help"><p id="headline-help" class="help">Applying a title changes the Markdown editor. Save a new revision before publishing. Suggestions from the original plan may no longer fit an edited article.</p></div><button id="apply-headline" type="button" class="secondary">Use title in editor</button><ul id="discovery-notes" class="warnings"></ul></details>
                   <section class="publication-panel" aria-labelledby="publication-title">
                     <h2 id="publication-title">Prepare to publish</h2><p class="help">A concise article, adapted for your channels. Review the text and post it yourself.</p>
@@ -110,7 +107,7 @@
                   </section>
                 </div>
               </div>
-              <aside id="inspector" class="inspector" aria-label="Draft evidence and review"><div class="inspector-heading"><span>Behind the draft</span><span class="section-number">02</span></div>
+              <aside id="inspector" class="inspector" aria-label="Draft evidence and review"><div class="inspector-heading"><span>Behind the draft</span></div>
                 <section id="limitations-panel" aria-labelledby="limitations-title" class="inspector-section" hidden><h2 id="limitations-title">Research limitations</h2><ul id="limitations" class="warnings"></ul></section>
                 <section id="review-panel" aria-labelledby="review-title" class="inspector-section" hidden><h2 id="review-title">Editorial review</h2><p id="review-status" class="status-line" tabindex="-1"></p><div id="revision-review-tools" hidden><div class="review-actions"><button id="request-review" class="secondary" type="button">Review saved revision</button><button id="cancel-review" class="text-button" type="button" hidden>Cancel review</button></div><p id="review-job" class="help" role="status" aria-live="polite"></p><p class="help">Uses the configured model and consumes its quota. Your saved text stays unchanged. Fixture mode gives a synthetic assessment.</p></div><details class="review-details" open><summary>Editorial findings <span id="issue-count" class="count-badge">0</span></summary><ul id="issues" class="issues"></ul></details><details class="review-details"><summary>Claim support <span id="claim-count" class="count-badge">0</span></summary><p class="help">Support signals, not a truth verdict. Check the evidence.</p><ul id="claims" class="claims"></ul></details></section>
                 <details id="evidence" class="inspector-section evidence-section" open><summary>Sources and evidence <span id="source-count" class="count-badge">0</span></summary><ul id="sources"></ul></details>
@@ -120,7 +117,7 @@
           </div>
         </section>
       </main>
-      <footer class="site-footer"><span>Made for the thoughtful first draft.</span><span>Fieldnote <span aria-hidden="true">/</span> Your writing studio</span></footer>
+      <footer class="site-footer"><span>Drafts stay in your configured workspace.</span><span>Fieldnote <span aria-hidden="true">/</span> Your writing studio</span></footer>
     </div>
   </div>
   <dialog id="leave-dialog" class="leave-dialog" aria-labelledby="leave-title" aria-describedby="leave-description">

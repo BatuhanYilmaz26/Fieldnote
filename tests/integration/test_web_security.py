@@ -66,7 +66,7 @@ async def test_browser_shell_enforces_csp_and_has_no_html_injection_sinks(
 
     html = response.text
     assert html.count("<script") == 1
-    assert '<script type="module" src="/assets/app.js"></script>' in html
+    assert '<script type="module" src="/assets/app.js?desk=3"></script>' in html
     lowered = html.lower()
     assert "onclick=" not in lowered
     assert "onerror=" not in lowered

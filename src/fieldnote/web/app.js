@@ -108,7 +108,7 @@ function applyTheme(theme) {
     $("theme-label").textContent = dark ? "Dark" : "Light";
   }
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", dark ? "#111622" : "#f5f6fa");
+  if (meta) meta.setAttribute("content", dark ? "#151b23" : "#f5f7f9");
 }
 
 function loadStoredTheme() {
@@ -129,9 +129,30 @@ function toggleTheme() {
   announce(`${next === "dark" ? "Dark" : "Light"} theme applied.`);
 }
 
-function closeNavigation() {
+function closeNavigation(returnFocus = true) {
+  const wasOpen = document.body.dataset.navigation === "open";
   delete document.body.dataset.navigation;
+  document.querySelector(".app-stage").inert = false;
+  $("navigation-scrim").hidden = true;
+  $("sidebar").removeAttribute("role");
+  $("sidebar").removeAttribute("aria-modal");
   $("menu-toggle").setAttribute("aria-expanded", "false");
+  if (wasOpen && returnFocus) $("menu-toggle").focus();
+}
+
+function openNavigation() {
+  setFocusMode(false);
+  document.body.dataset.navigation = "open";
+  $("sidebar").setAttribute("role", "dialog");
+  $("sidebar").setAttribute("aria-modal", "true");
+  $("menu-toggle").setAttribute("aria-expanded", "true");
+  $("navigation-scrim").hidden = false;
+  document.querySelector(".app-stage").inert = true;
+  // Move focus after the visibility change, including when background tabs
+  // suspend animation frames. Making the old focus inert must not strand it.
+  window.setTimeout(() => {
+    if (document.body.dataset.navigation === "open") $("navigation-close").focus();
+  }, 0);
 }
 
 function setFocusMode(enabled) {
@@ -277,7 +298,7 @@ function renderLibrary() {
     const item = document.createElement("li");
     item.className = "library-empty";
     const title = document.createElement("strong");
-    title.textContent = state.history.length ? "No matching drafts." : "A blank page, full of possibility.";
+    title.textContent = state.history.length ? "No matching drafts." : "No saved drafts yet.";
     const detail = document.createElement("p");
     detail.textContent = state.history.length ? "Try another phrase or choose All statuses." : "Create your first draft. Your sources, progress and revisions will stay together.";
     item.append(title, detail);
@@ -1480,14 +1501,31 @@ function wireEvents() {
   $("menu-toggle").addEventListener("click", (event) => {
     event.stopPropagation();
     const open = document.body.dataset.navigation !== "open";
-    if (open) document.body.dataset.navigation = "open";
+    if (open) openNavigation();
     else closeNavigation();
     $("menu-toggle").setAttribute("aria-expanded", String(open));
   });
+  $("navigation-close").addEventListener("click", () => closeNavigation());
+  $("navigation-scrim").addEventListener("click", () => closeNavigation());
+  window.matchMedia("(max-width: 780px)").addEventListener("change", () => closeNavigation(false));
   document.addEventListener("click", (event) => {
     if (document.body.dataset.navigation === "open" && !$("sidebar").contains(event.target)) closeNavigation();
   });
   document.addEventListener("keydown", (event) => {
+    if (document.body.dataset.navigation === "open") {
+      if (event.key === "Escape") { event.preventDefault(); closeNavigation(); }
+      if (event.key === "Tab") {
+        const targets = [...$("sidebar").querySelectorAll("a[href],button:not(:disabled)")]
+          .filter((element) => element.getClientRects().length);
+        const first = targets[0], last = targets[targets.length - 1];
+        if (!$("sidebar").contains(document.activeElement)) {
+          event.preventDefault(); (event.shiftKey ? last : first).focus();
+        }
+        else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       showWorkspace("library", true);
