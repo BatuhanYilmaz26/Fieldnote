@@ -10,7 +10,7 @@
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <link rel="preload" href="/assets/fonts/Manrope-Variable.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="/assets/styles.css?desk=6">
-  <script type="module" src="/assets/app.js?desk=7"></script>
+  <script type="module" src="/assets/app.js?desk=8"></script>
 </head>
 <body data-workspace="compose">
   <a class="skip" href="#main">Skip to workspace</a>
@@ -148,6 +148,16 @@
       <div class="dialog-actions">
         <button type="submit" value="stay" class="primary-button" autofocus>Keep editing</button>
         <button type="submit" value="leave" class="secondary">Leave without saving</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="delete-dialog" class="leave-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <form method="dialog">
+      <h2 id="delete-title">Delete this draft?</h2>
+      <p id="delete-description">This removes the draft, its revisions and any unsaved edits. You cannot undo this action.</p>
+      <div class="dialog-actions">
+        <button type="submit" value="keep" class="secondary" autofocus>Keep draft</button>
+        <button type="submit" value="delete" class="secondary danger">Delete draft</button>
       </div>
     </form>
   </dialog>

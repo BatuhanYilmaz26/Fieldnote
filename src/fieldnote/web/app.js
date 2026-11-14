@@ -200,10 +200,15 @@ function showWorkspace(view, focus = false) {
 
 async function confirmDiscard() {
   if (!state.editorDirty && !state.publicationDirty) return true;
-  const dialog = $("leave-dialog");
-  dialog.returnValue = "stay";
+  return confirmDialog("leave-dialog", "leave");
+}
+
+function confirmDialog(id, confirmedValue) {
+  const dialog = $(id);
+  if (dialog.open) return Promise.resolve(false);
+  dialog.returnValue = "";
   return new Promise((resolve) => {
-    dialog.addEventListener("close", () => resolve(dialog.returnValue === "leave"), { once: true });
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === confirmedValue), { once: true });
     dialog.showModal();
   });
 }
@@ -1578,24 +1583,36 @@ async function cancelRun() {
 }
 
 async function deleteRun() {
-  if (!state.activeRun) return;
-  if (!window.confirm("Delete this draft and its stored revisions? This cannot be undone.")) return;
+  const runId = state.activeRun;
+  if (!runId || !await confirmDialog("delete-dialog", "delete") || runId !== state.activeRun) return;
+  const button = $("delete");
+  button.disabled = true;
   try {
-    await api(`/api/v1/runs/${state.activeRun}`, { method: "DELETE" });
+    await api(`/api/v1/runs/${runId}`, { method: "DELETE" });
+    state.history = state.history.filter((run) => run.id !== runId);
+    if (state.activeRun !== runId) {
+      renderHistory();
+      return;
+    }
     stopObserving();
     state.activeRun = null;
     state.run = null;
     state.article = null;
+    state.editorDirty = false;
+    state.publicationDirty = false;
     localStorage.removeItem("fieldnote.run");
     $("run-view").hidden = true;
     $("empty").hidden = false;
     $("state").textContent = "No run selected";
     delete $("state").dataset.state;
-    await refreshHistory();
-    showWorkspace("compose");
+    renderHistory();
+    showWorkspace("compose", true);
     announce("Draft deleted.");
+    await refreshHistory();
   } catch (error) {
     showError(error);
+  } finally {
+    button.disabled = false;
   }
 }
 
