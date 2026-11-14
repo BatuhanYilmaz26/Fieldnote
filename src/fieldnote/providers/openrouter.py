@@ -4,6 +4,7 @@ Retries, quotas, and durable reservation ownership belong to the worker's
 dispatch service. This adapter never retries or chooses a different model.
 """
 
+import asyncio
 import json
 import math
 import re
@@ -108,6 +109,7 @@ class OpenRouterGateway:
         allowed_models: tuple[str, ...] = (),
         allowed_providers: tuple[str, ...] = (),
         zero_data_retention: bool = False,
+        timeout: float = 90.0,
     ) -> None:
         if base_url.rstrip("/") != _ORIGIN:
             raise ValueError("Only the configured official OpenRouter origin is permitted")
@@ -123,6 +125,9 @@ class OpenRouterGateway:
             raise ValueError("Budgeted calls require explicit model and provider allowlists")
         if any(not _SAFE_ID.fullmatch(provider) for provider in allowed_providers):
             raise ValueError("Invalid provider identity")
+        if not 0 < timeout <= 180:
+            raise ValueError("OpenRouter timeout must be between zero and 180 seconds")
+        self._timeout = timeout
         self._client = client
         self._api_key = api_key
         self.model = model
@@ -191,40 +196,41 @@ class OpenRouterGateway:
         }
         started = time.monotonic()
         try:
-            async with self._client.stream(
-                "POST",
-                f"{_ORIGIN}/chat/completions",
-                headers={"Authorization": f"Bearer {self._api_key}", "X-Title": "Fieldnote"},
-                json=body,
-                timeout=httpx.Timeout(90.0, connect=5.0, pool=5.0, write=15.0),
-                follow_redirects=False,
-            ) as response:
-                if response.status_code != 200:
-                    code = {
-                        400: "provider_request_rejected",
-                        401: "provider_authentication_failed",
-                        402: "provider_budget_exhausted",
-                        403: "provider_policy_denied",
-                        404: "provider_capability_unavailable",
-                        408: "provider_timeout",
-                        429: "provider_rate_limited",
-                    }.get(response.status_code, "provider_unavailable")
-                    raise ProviderError(
-                        code,
-                        retryable=response.status_code in {408, 429} or response.status_code >= 500,
-                        retry_after=_retry_after(response.headers.get("Retry-After")),
-                        outcome_unknown=response.status_code == 408 or response.status_code >= 500,
-                    )
-                chunks = bytearray()
-                async for chunk in response.aiter_bytes():
-                    chunks.extend(chunk)
-                    if len(chunks) > _MAX_RESPONSE_BYTES:
-                        raise ProviderError("provider_response_too_large", outcome_unknown=True)
-                try:
-                    payload = json.loads(chunks)
-                except (ValueError, UnicodeDecodeError) as exc:
-                    raise ProviderError("provider_invalid_response", outcome_unknown=True) from exc
-        except httpx.TimeoutException as exc:
+            async with asyncio.timeout(self._timeout):
+                async with self._client.stream(
+                    "POST",
+                    f"{_ORIGIN}/chat/completions",
+                    headers={"Authorization": f"Bearer {self._api_key}", "X-Title": "Fieldnote"},
+                    json=body,
+                    timeout=httpx.Timeout(self._timeout),
+                    follow_redirects=False,
+                ) as response:
+                    if response.status_code != 200:
+                        code = {
+                            400: "provider_request_rejected",
+                            401: "provider_authentication_failed",
+                            402: "provider_budget_exhausted",
+                            403: "provider_policy_denied",
+                            404: "provider_capability_unavailable",
+                            408: "provider_timeout",
+                            429: "provider_rate_limited",
+                        }.get(response.status_code, "provider_unavailable")
+                        raise ProviderError(
+                            code,
+                            retryable=response.status_code in {408, 429} or response.status_code >= 500,
+                            retry_after=_retry_after(response.headers.get("Retry-After")),
+                            outcome_unknown=response.status_code == 408 or response.status_code >= 500,
+                        )
+                    chunks = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        chunks.extend(chunk)
+                        if len(chunks) > _MAX_RESPONSE_BYTES:
+                            raise ProviderError("provider_response_too_large", outcome_unknown=True)
+                    try:
+                        payload = json.loads(chunks)
+                    except (ValueError, UnicodeDecodeError) as exc:
+                        raise ProviderError("provider_invalid_response", outcome_unknown=True) from exc
+        except (TimeoutError, httpx.TimeoutException) as exc:
             raise ProviderError("provider_timeout", retryable=True, outcome_unknown=True) from exc
         except httpx.RequestError as exc:
             raise ProviderError(
@@ -245,7 +251,9 @@ class OpenRouterGateway:
                 raise ValueError("Expected one response choice")
             choice = choices[0]
             if choice.get("finish_reason") != "stop":
-                raise ProviderError("provider_incomplete_output", outcome_unknown=True, response=metadata)
+                raise ProviderError(
+                    "provider_incomplete_output", outcome_unknown=True, response=metadata, schema_name=schema_name,
+                )
             message = choice["message"]
             if message.get("refusal"):
                 raise ProviderError("provider_refusal", response=metadata)

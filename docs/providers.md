@@ -50,7 +50,8 @@ remaining. See [OpenRouter's rate limit documentation](https://openrouter.ai/doc
 
 Failures use public-safe codes. The scheduler owns retry/backoff/deadline
 decisions; this transport never retries by itself. A rate-limit error preserves
-`Retry-After` where valid. A timeout can mean the remote request completed, so
+`Retry-After` where valid. `MODEL_TIMEOUT_SECONDS` caps the entire inference
+request, including a response that keeps sending small chunks. A timeout can mean the remote request completed, so
 the caller must retain its reservation. Missing usage or cost remains unknown,
 not zero. Local cancellation does not prove remote processing or billing stopped.
 

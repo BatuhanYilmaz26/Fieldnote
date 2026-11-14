@@ -1,3 +1,4 @@
+import asyncio
 import json
 import traceback
 from dataclasses import asdict
@@ -78,6 +79,33 @@ async def test_absent_usage_and_price_remain_unknown():
             Answer, [{"role": "user", "content": "Write"}], "call"
         )
     assert result.usage is None and result.cost_usd is None
+
+
+@pytest.mark.asyncio
+async def test_openrouter_total_timeout_bounds_a_response_with_continuous_chunks():
+    closing = asyncio.Event()
+
+    class SlowBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            while True:
+                yield b" "
+                await asyncio.sleep(0.005)
+
+        async def aclose(self):
+            closing.set()
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, stream=SlowBody()),
+    )) as client:
+        with pytest.raises(ProviderError, match="provider_timeout") as error:
+            await asyncio.wait_for(
+                OpenRouterGateway(client, "test-key", timeout=0.05).generate(
+                    Answer, [{"role": "user", "content": "Write"}], "call",
+                ),
+                timeout=2,
+            )
+    assert closing.is_set()
+    assert error.value.retryable and error.value.outcome_unknown
 
 
 @pytest.mark.asyncio

@@ -289,6 +289,7 @@ async def provider_runtime(settings: Settings):
                 settings.model_policy,
                 allowed_models=settings.model_allowlist,
                 allowed_providers=settings.openrouter_provider_allowlist,
+                timeout=settings.model_timeout_seconds,
             )
         if settings.research_provider == "treg":
             assert client is not None and settings.treg_token is not None
