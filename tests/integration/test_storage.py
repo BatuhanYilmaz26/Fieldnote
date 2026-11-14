@@ -19,7 +19,7 @@ from psycopg.conninfo import make_conninfo
 from psycopg_pool import PoolTimeout
 
 from fieldnote.storage import Repository, StorageError
-from fieldnote.storage.migrate import grant_runtime, migrate, migration_files
+from fieldnote.storage.migrate import MIGRATION_LOCK, grant_runtime, migrate, migration_files
 from fieldnote.storage.pool import database_pool
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
@@ -56,6 +56,30 @@ async def test_migrations_are_repeatable_and_checksums_enforced(database, tmp_pa
     candidate.write_text(candidate.read_text() + "\n-- changed\n")
     with pytest.raises(RuntimeError, match="checksum mismatch"):
         await migrate(url, tmp_path, setup_saver=False)
+
+
+@pytest.mark.asyncio
+async def test_waiting_migration_leaves_no_transaction_snapshot(database):
+    _, url = database
+    async with await psycopg.AsyncConnection.connect(url, autocommit=True) as connection:
+        await connection.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK,))
+        waiting = asyncio.create_task(migrate(url, MIGRATIONS, setup_saver=False))
+        try:
+            for _ in range(20):
+                row = await (await connection.execute(
+                    "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid<>pg_backend_pid() "
+                    "AND query LIKE 'SELECT pg_try_advisory_lock(%' AND state='idle' "
+                    "AND datname=current_database() AND backend_xmin IS NULL)"
+                )).fetchone()
+                if row and row[0]:
+                    break
+                await asyncio.sleep(0.05)
+            else:
+                pytest.fail("No waiting migration released its transaction snapshot")
+            assert not waiting.done()
+        finally:
+            await connection.execute("SELECT pg_advisory_unlock(%s)", (MIGRATION_LOCK,))
+            assert await asyncio.wait_for(waiting, timeout=5) == []
 
 
 @pytest.mark.asyncio

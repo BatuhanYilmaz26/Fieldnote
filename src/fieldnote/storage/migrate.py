@@ -36,7 +36,16 @@ async def migrate(database_url: str, directory: Path, *, setup_saver: bool = Tru
     )
     applied: list[str] = []
     try:
-        await connection.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK,))
+        # A blocking SELECT holds a transaction snapshot while waiting for the
+        # advisory lock. LangGraph's concurrent index builds can wait for that
+        # snapshot, deadlocking the holder against another migration session.
+        while True:
+            row = await (await connection.execute(
+                "SELECT pg_try_advisory_lock(%s) AS acquired", (MIGRATION_LOCK,),
+            )).fetchone()
+            if row and row["acquired"]:
+                break
+            await asyncio.sleep(0.1)
         await connection.execute(
             "CREATE TABLE IF NOT EXISTS schema_migrations ("
             "id text PRIMARY KEY, checksum text NOT NULL, "
