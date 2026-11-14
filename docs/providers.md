@@ -138,6 +138,22 @@ Official references:
 - [Maintainer WebAccess instructions](https://github.com/superdesigndev/treg/blob/main/skills/web-access/SKILL.md)
 - [Maintainer usage reference](https://github.com/superdesigndev/treg/blob/main/USAGE.md)
 
+## Direct TinyFish
+
+Set `RESEARCH_PROVIDER=tinyfish` to use TinySearch and TinyFetch directly. Put
+`TINYFISH_API_KEY` in the private environment. Set `TINYFISH_FREE_QUALIFIED=true`
+only after confirming the key's Search and Fetch rates and account limits.
+Fieldnote uses this contract as the pricing basis and records connection
+failures with no response as unknown outcomes. The connector in Codex and the
+Fieldnote worker authenticate separately.
+
+The worker sends language preferences to TinySearch and batches up to four
+public URLs per TinyFetch request. PostgreSQL accounts separately for requests
+and URLs. Publication dates and the origin's HTTP Last-Modified timestamp are
+stored separately. A modification timestamp does not establish publication.
+
+[Pricing](https://www.tinyfish.ai/pricing) · [Search API](https://docs.tinyfish.ai/api-reference/search-the-web) · [Fetch API](https://docs.tinyfish.ai/api-reference/fetch-and-extract-content-from-urls)
+
 ## Source links and citations
 
 Generated drafts use `[@source_id]` markers. Fieldnote resolves them from its

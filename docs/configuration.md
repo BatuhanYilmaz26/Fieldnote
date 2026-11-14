@@ -31,6 +31,7 @@ The names `OPENROUTER_API_KEY`, `TREG_TOKEN`, and `TAVILY_API_KEY` are canonical
 |---|---|
 | `MODEL_PROVIDER=openrouter` | `ENABLE_EXTERNAL_CALLS=true`, `OPENROUTER_QUALIFIED=true`, nonblank `OPENROUTER_API_KEY` |
 | `RESEARCH_PROVIDER=treg` | `ENABLE_EXTERNAL_CALLS=true`, `TREG_QUALIFIED=true`, `TREG_TOKEN`, and `TREG_ORG` where the qualified token requires it |
+| `RESEARCH_PROVIDER=tinyfish` | `ENABLE_EXTERNAL_CALLS=true`, `TINYFISH_API_KEY` and `TINYFISH_FREE_QUALIFIED=true` after confirming that Search and Fetch are free for that key |
 | `RESEARCH_PROVIDER=tavily` | The adapter remains available for qualification. The worker refuses to dispatch it until it has a qualified billing contract. |
 
 Set qualification flags only after recording your account's successful checks

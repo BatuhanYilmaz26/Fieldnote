@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 from fieldnote.domain.languages import fold_for_matching
@@ -31,6 +31,13 @@ class ResearchGateway(Protocol):
     async def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]: ...
 
     async def extract(self, url: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class BatchResearchGateway(Protocol):
+    batch_size: int
+
+    async def extract_many(self, urls: tuple[str, ...]) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +202,30 @@ class ResearchCoordinator:
         self.limits = limits or ResearchLimits()
         self.check_active = check_active
 
+    async def _extract(self, urls: tuple[str, ...], outcome: ResearchOutcome) -> AsyncIterator[dict[str, Any]]:
+        gateway = self.gateway
+        batch_size = max(1, min(8, gateway.batch_size)) if isinstance(gateway, BatchResearchGateway) else 1
+        for start in range(0, len(urls), batch_size):
+            batch = urls[start : start + batch_size]
+            if self.check_active is not None:
+                await self.check_active()
+            try:
+                if batch_size > 1 and isinstance(gateway, BatchResearchGateway):
+                    extracted = await gateway.extract_many(batch)
+                else:
+                    extracted = [await gateway.extract(batch[0])]
+            except ProviderError as exc:
+                if isinstance(exc, DispatchAdmissionError) or exc.code in _STOP_ERRORS:
+                    raise
+                outcome.failures.extend({"stage": "extract", "code": exc.code} for _ in batch)
+                continue
+            outcome.failures.extend(
+                {"stage": "extract", "code": "research_extraction_failed"}
+                for _ in range(len(batch) - len(extracted))
+            )
+            for row in extracted:
+                yield row
+
     async def collect(
         self,
         queries: tuple[str, ...] | list[str],
@@ -252,16 +283,8 @@ class ResearchCoordinator:
         if len(ranked) > self.limits.max_pages:
             outcome.truncated = True
         used_tokens = 0
-        for result in ranked[: self.limits.max_pages]:
-            if self.check_active is not None:
-                await self.check_active()
-            try:
-                extracted = await self.gateway.extract(str(result["url"]))
-            except ProviderError as exc:
-                if isinstance(exc, DispatchAdmissionError) or exc.code in _STOP_ERRORS:
-                    raise
-                outcome.failures.append({"stage": "extract", "code": exc.code})
-                continue
+        urls = tuple(str(result["url"]) for result in ranked[: self.limits.max_pages])
+        async for extracted in self._extract(urls, outcome):
             source = extracted.get("source")
             excerpt = extracted.get("excerpt")
             if not isinstance(source, dict) or not isinstance(excerpt, dict):

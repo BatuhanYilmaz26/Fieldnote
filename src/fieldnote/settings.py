@@ -37,11 +37,13 @@ class Settings(BaseSettings):
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost", "::1", "testserver")
 
     model_provider: Literal["fixture", "openrouter"] = "fixture"
-    research_provider: Literal["fixture", "treg", "tavily"] = "fixture"
+    research_provider: Literal["fixture", "treg", "tavily", "tinyfish"] = "fixture"
     enable_external_calls: bool = False
     topic_discovery: Literal["fixture", "public_feeds"] = "fixture"
     openrouter_qualified: bool = False
     treg_qualified: bool = False
+    tinyfish_free_qualified: bool = False
+    tinyfish_api_key: SecretStr | None = Field(default=None, repr=False)
     tavily_qualified: bool = False
     openrouter_api_key: SecretStr | None = Field(default=None, repr=False)
     openrouter_model: str = "openrouter/free"
@@ -244,6 +246,11 @@ class Settings(BaseSettings):
         if self.model_policy == "budgeted" and not self.openrouter_provider_allowlist:
             raise ValueError("Budgeted model policy needs an explicit provider allowlist")
 
+        if self.research_provider == "tinyfish" and (
+            not self.enable_external_calls or not self.tinyfish_free_qualified
+            or self.tinyfish_api_key is None or not self.tinyfish_api_key.get_secret_value().strip()
+        ):
+            raise ValueError("TinyFish requires ENABLE_EXTERNAL_CALLS, a qualified free Search/Fetch contract and TINYFISH_API_KEY")
         if self.research_provider == "treg":
             if not self.enable_external_calls or not self.treg_qualified or self.treg_token is None:
                 raise ValueError("Treg requires ENABLE_EXTERNAL_CALLS, qualification and TREG_TOKEN")

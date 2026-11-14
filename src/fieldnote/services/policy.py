@@ -27,11 +27,16 @@ def determine_research(request: CreateRunRequest) -> ResearchDecision:
     else:
         reason = "ambiguous_factual_brief"
         needed = True
+    queries: tuple[str, ...] = (request.topic,) if needed else ()
+    angle = " ".join(request.angle.split())
+    if needed and angle and angle.casefold() not in request.topic.casefold():
+        focused = f"{request.topic[:300].rstrip()} {angle[:199]}"
+        queries = (focused, request.topic)
     return ResearchDecision(
         need_research=needed,
         effective_mode="required" if needed else "off",
         reason=reason,
-        queries=(request.topic,) if needed else (),
+        queries=queries,
     )
 
 

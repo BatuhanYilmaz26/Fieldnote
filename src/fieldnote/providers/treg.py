@@ -9,33 +9,25 @@ a free result.
 
 from __future__ import annotations
 
-import hashlib
-import math
 import re
-from datetime import UTC, datetime
 from decimal import Decimal
-from email.utils import parsedate_to_datetime
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
 import httpx
 
-from fieldnote.domain.models import excerpt_identity
-from fieldnote.providers.base import ProviderError, ResearchResults
-from fieldnote.services.urls import canonicalize_url, resolve_public_url, validate_public_url
+from fieldnote.providers.base import ProviderError
+from fieldnote.providers.research_response import (
+    json_body,
+    normalize_extraction,
+    normalize_search,
+    retry_after,
+)
+from fieldnote.services.urls import canonicalize_url, resolve_public_url
 
 _TREG_ORIGIN = "https://treg.to"
 _SEARCH_OPERATION = "tinyfish.web.search"
 _EXTRACT_OPERATION = "tinyfish.web.fetch"
 _SAFE_TEXT = re.compile(r"^[A-Za-z0-9_.:/-]{1,1024}$")
-_INJECTION = re.compile(
-    r"(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|"
-    r"system\s+prompt|reveal\s+(?:the\s+)?(?:secret|api\s+key|token)|"
-    r"you\s+are\s+now\s+(?:an?\s+)?(?:admin|system|developer)|"
-    r"disregard\s+(?:the\s+)?(?:system|developer)\s+message)",
-    re.IGNORECASE,
-)
-_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$")
 
 
 def _micro_header(response: httpx.Response) -> int | None:
@@ -47,33 +39,6 @@ def _micro_header(response: httpx.Response) -> int | None:
     except ValueError:
         return None
     return value if 0 <= value <= 1_000_000_000 else None
-
-
-def _retry_after(response: httpx.Response) -> float | None:
-    raw = response.headers.get("retry-after")
-    if raw is None:
-        return None
-    try:
-        value = float(raw)
-    except ValueError:
-        try:
-            date = parsedate_to_datetime(raw)
-            value = (date.astimezone(UTC) - datetime.now(UTC)).total_seconds()
-        except (TypeError, ValueError, OverflowError):
-            return None
-    return max(value, 0.0) if math.isfinite(value) else None
-
-
-def _date(value: Any) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    match = _DATE.fullmatch(value.strip())
-    if not match:
-        return None
-    try:
-        return datetime.fromisoformat(match.group(1)).replace(tzinfo=UTC)
-    except ValueError:
-        return None
 
 
 def _cap(value: int) -> str:
@@ -151,7 +116,7 @@ class TregResearchGateway:
         return ProviderError(
             code,
             retryable=status in {408, 429} or status >= 500,
-            retry_after=_retry_after(response),
+            retry_after=retry_after(response),
             outcome_unknown=status == 408 or status >= 500,
         )
 
@@ -167,7 +132,7 @@ class TregResearchGateway:
                 if response.status_code != 200:
                     raise self._error(response)
                 self._check_charge(charge)
-                return await _json_body(response, limit), charge
+                return await json_body(response, limit), charge
         except ProviderError as exc:
             exc.research_cost_micro = charge
             raise
@@ -183,34 +148,7 @@ class TregResearchGateway:
             raise ValueError("At most five search results are requested")
         payload, charge = await self._request("GET", _SEARCH_OPERATION, limit=512_000,
             params={"query": query, "domain_type": "web", "page": 0})
-        if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
-            raise ProviderError("research_invalid_response", outcome_unknown=True, research_cost_micro=charge)
-        results: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for item in payload["results"]:
-            if not isinstance(item, dict) or not isinstance(item.get("url"), str):
-                continue
-            try:
-                url = canonicalize_url(item["url"])
-            except ValueError:
-                continue
-            if url in seen:
-                continue
-            seen.add(url)
-            title = str(item.get("title") or urlsplit(url).hostname or "Source")[:240]
-            snippet = str(item.get("snippet") or "")[:1000]
-            results.append(
-                {
-                    "url": url,
-                    "title": title.strip() or "Source",
-                    "snippet": snippet.strip(),
-                    "provider": "treg/tinyfish",
-                    "published_at": None,
-                }
-            )
-            if len(results) >= max_results:
-                break
-        return ResearchResults(results, charge)
+        return normalize_search(payload, max_results, "treg/tinyfish", charge)
 
     async def extract(self, url: str) -> dict[str, Any]:
         canonical = canonicalize_url(url)
@@ -227,57 +165,4 @@ class TregResearchGateway:
         if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
             raise ProviderError("research_extraction_failed", outcome_unknown=True, research_cost_micro=charge)
         row = rows[0]
-        text = row.get("text")
-        if not isinstance(text, str) or not text.strip():
-            raise ProviderError("research_extraction_empty", research_cost_micro=charge)
-        text = text[: self.max_chars_per_page]
-        final_raw = row.get("final_url") or canonical
-        try:
-            final = validate_public_url(str(final_raw))
-        except ValueError:
-            final = canonical
-        title = str(row.get("title") or urlsplit(final).hostname or "Source")[:240].strip() or "Source"
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        source_id = "src_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
-        locator = f"characters 0:{len(text)} of fetched Markdown"
-        flags = ("possible_instruction_injection",) if _INJECTION.search(text) else ()
-        published = _date(row.get("published_date"))
-        return {
-            "source": {
-                "id": source_id,
-                "url": final,
-                "original_url": canonical,
-                "final_url": final,
-                "title": title,
-                "retrieved_at": datetime.now(UTC).isoformat(),
-                "published_at": published.isoformat() if published else None,
-                "content_hash": digest,
-                "provider": "treg/tinyfish",
-                "extraction_state": "extracted",
-            },
-            "excerpt": {
-                "id": excerpt_identity(source_id, digest, locator),
-                "source_id": source_id,
-                "text": text,
-                "locator": locator,
-                "content_hash": digest,
-                "source_kind": "body",
-                "flags": list(flags),
-            },
-            "fixture": False,
-            "cost_micro_usd": charge,
-        }
-
-
-async def _json_body(response: httpx.Response, limit: int) -> Any:
-    import json
-
-    chunks = bytearray()
-    async for chunk in response.aiter_bytes():
-        chunks.extend(chunk)
-        if len(chunks) > limit:
-            raise ProviderError("research_response_too_large", outcome_unknown=True)
-    try:
-        return json.loads(chunks)
-    except (ValueError, UnicodeDecodeError) as exc:
-        raise ProviderError("research_invalid_response", outcome_unknown=True) from exc
+        return normalize_extraction(canonical, row, "treg/tinyfish", self.max_chars_per_page, charge)

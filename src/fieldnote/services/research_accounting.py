@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from fieldnote.providers.base import DispatchAdmissionError, ProviderError, ResearchResults
+from fieldnote.providers.tinyfish import TinyFishResearchGateway
 from fieldnote.services.budgets import BudgetError, BudgetService
 from fieldnote.services.research import ResearchGateway
 from fieldnote.services.urls import UnsafeURL
@@ -24,32 +25,37 @@ def _cost(micro: Any) -> Decimal | None:
 
 
 class AccountedResearch:
-    def __init__(self, gateway: ResearchGateway, budget: BudgetService, claim: Claim, settings: Settings) -> None:
+    def __init__(self, gateway: ResearchGateway, budget: BudgetService, claim: Claim, settings: Settings,
+                 *, language: str | None = None) -> None:
         self.gateway = gateway
         self.budget = budget
         self.claim = claim
         self.settings = settings
         self.sequence = 0
+        self.language = language
+        self.batch_size = gateway.batch_size if isinstance(gateway, TinyFishResearchGateway) else 1
 
     async def _dispatch[T](self, operation: str, target: str, call: Callable[[], Awaitable[T]], *, urls: int = 0) -> T:
         # A route cap is the qualified conservative monetary bound, not an
         # assumed average price. Unpriced adapters do not inherit zero cost.
-        if self.settings.research_provider != "treg":
+        provider = self.settings.research_provider
+        if provider not in {"treg", "tinyfish"}:
             raise BudgetError("research_price_unknown")
+        cap = self.settings.treg_max_cost_micro if provider == "treg" else 0
         self.sequence += 1
         digest = hashlib.sha256(target.encode("utf-8")).hexdigest()[:16]
         identity = f"research/{self.claim.generation}/{self.sequence}/{operation}/{digest}"
         try:
             reservation = await self.budget.reserve_call(
                 self.claim, identity, max_tokens=0,
-                estimated_cost_usd=Decimal(self.settings.treg_max_cost_micro) / Decimal(1_000_000),
+                estimated_cost_usd=Decimal(cap) / Decimal(1_000_000),
                 url_count=urls,
             )
         except BudgetError as exc:
             raise ResearchDispatchError(exc.code, retryable=exc.retryable, retry_after=exc.retry_after) from None
         if not reservation.dispatch_allowed:
             raise BudgetError("research_dispatch_already_reserved", outcome_unknown=True)
-        metadata = {"provider": "treg", "operation": operation}
+        metadata = {"provider": provider, "operation": operation}
         try:
             result = await call()
         except BaseException as exc:
@@ -91,7 +97,16 @@ class AccountedResearch:
         return result
 
     async def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]:
-        return await self._dispatch("search", query, lambda: self.gateway.search(query, max_results))
+        gateway = self.gateway
+        if isinstance(gateway, TinyFishResearchGateway):
+            return await self._dispatch("search", query, lambda: gateway.search(query, max_results, language=self.language))
+        return await self._dispatch("search", query, lambda: gateway.search(query, max_results))
 
     async def extract(self, url: str) -> dict[str, Any]:
         return await self._dispatch("extract", url, lambda: self.gateway.extract(url), urls=1)
+
+    async def extract_many(self, urls: tuple[str, ...]) -> list[dict[str, Any]]:
+        gateway = self.gateway
+        if not isinstance(gateway, TinyFishResearchGateway):
+            raise ValueError("This provider does not support batch extraction")
+        return await self._dispatch("extract", "\n".join(urls), lambda: gateway.extract_many(urls), urls=len(urls))

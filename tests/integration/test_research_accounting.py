@@ -19,6 +19,7 @@ from fieldnote.domain import CreateRunRequest
 from fieldnote.domain.models import excerpt_identity
 from fieldnote.graph import make_fixture_dependencies
 from fieldnote.providers.fixture import FixtureGateway
+from fieldnote.providers.tinyfish import TinyFishResearchGateway
 from fieldnote.providers.treg import TregResearchGateway
 from fieldnote.services.budgets import BudgetError, BudgetService
 from fieldnote.settings import Settings
@@ -211,6 +212,49 @@ async def test_actual_worker_accounts_each_treg_request_and_keeps_model_counts_s
         rows = await (await connection.execute("SELECT p.*,b.actual_usd,b.amount_usd FROM provider_calls p JOIN budget_reservations b ON b.run_id=p.run_id AND b.call_id=p.call_id WHERE p.call_kind='research'")).fetchall()
     assert len(rows) == len(calls) and sum(row["reserved_urls"] for row in rows) == calls.count("POST")
     assert all(row["actual_usd"] == Decimal("0.000005") and row["amount_usd"] == Decimal("0.000010") for row in rows)
+    assert all(row["reserved_tokens"] == row["actual_tokens"] == 0 for row in rows)
+
+
+async def test_actual_worker_reserves_one_request_and_each_url_for_tinyfish_batch(worker_repository):
+    repository = worker_repository
+    settings = Settings(_env_file=None, enable_external_calls=True, research_provider="tinyfish",
+                        tinyfish_api_key="test-key", tinyfish_free_qualified=True)
+    request = CreateRunRequest(topic="Website availability", target_words=350)
+    base = make_fixture_dependencies(request)
+    original_url, page = next(iter(base.research._pages.items()))
+    original = await base.research.extract(original_url)
+    new_id = excerpt_identity(original["source"]["id"], original["excerpt"]["content_hash"],
+                              f"characters 0:{len(page['text'])} of fetched Markdown")
+    model = FixtureGateway(json.loads(json.dumps(base.model._responses).replace(original["excerpt"]["id"], new_id)))
+    second = "https://example.org/another-reference"
+    batches = []
+
+    def transport(http_request):
+        if http_request.method == "GET":
+            return httpx.Response(200, json={"results": [
+                {"url": original_url, "title": page["title"]}, {"url": second, "title": "Second reference"},
+            ]})
+        batches.append(json.loads(http_request.content)["urls"])
+        return httpx.Response(200, json={"results": [
+            {"url": second, "error": "not reachable"},
+            {"url": original_url, "text": page["text"], "title": page["title"]},
+        ]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+        gateway = TinyFishResearchGateway(client, "test-key", qualify_dns=False)
+        run = await repository.create_run(settings.local_owner_id, request.model_dump(mode="json"), uuid4().hex)
+        claim = await repository.claim_job("tinyfish-accounted-worker")
+        await process_claim(repository, claim, settings, ProviderRuntime(model=model, research=gateway))
+
+    assert len(batches) == 1 and set(batches[0]) == {original_url, second}
+    saved = await repository.get_run(settings.local_owner_id, run["id"])
+    assert saved["state"] == "needs_review" and saved["research_call_count"] == 2
+    async with repository.pool.connection() as connection:
+        rows = await (await connection.execute(
+            "SELECT reserved_urls, reserved_tokens, actual_tokens FROM provider_calls "
+            "WHERE run_id=%s AND call_kind='research' ORDER BY reserved_urls", (run["id"],),
+        )).fetchall()
+    assert [row["reserved_urls"] for row in rows] == [0, 2]
     assert all(row["reserved_tokens"] == row["actual_tokens"] == 0 for row in rows)
 
 

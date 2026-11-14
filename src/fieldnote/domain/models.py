@@ -215,13 +215,14 @@ class Source(DomainModel):
     final_url: str | None = None
     published_at: datetime | None = None
     updated_at: datetime | None = None
+    origin_last_modified_at: datetime | None = None
 
     @field_validator("url", "original_url", "final_url")
     @classmethod
     def valid_url(cls, value: str | None) -> str | None:
         return None if value is None else _http_url(value)
 
-    @field_validator("retrieved_at", "published_at", "updated_at")
+    @field_validator("retrieved_at", "published_at", "updated_at", "origin_last_modified_at")
     @classmethod
     def utc_dates(cls, value: datetime | None) -> datetime | None:
         return None if value is None else _utc(value)

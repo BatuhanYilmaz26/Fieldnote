@@ -40,6 +40,7 @@ from fieldnote.providers.base import ModelGateway, ProviderError
 from fieldnote.providers.fixture import FixtureGateway, FixtureResearchGateway
 from fieldnote.providers.openrouter import OpenRouterGateway
 from fieldnote.providers.tavily import TavilyResearchGateway
+from fieldnote.providers.tinyfish import TinyFishResearchGateway
 from fieldnote.providers.treg import TregResearchGateway
 from fieldnote.services.budgets import BudgetService, retry_decision
 from fieldnote.services.citations import CitationError, render_citations
@@ -298,6 +299,12 @@ async def provider_runtime(settings: Settings):
                 max_cost_micro=settings.treg_max_cost_micro,
                 max_chars_per_page=settings.research_max_chars_per_page,
             )
+        elif settings.research_provider == "tinyfish":
+            assert client is not None and settings.tinyfish_api_key is not None
+            runtime.research = TinyFishResearchGateway(
+                client, settings.tinyfish_api_key.get_secret_value(), timeout=settings.research_timeout_seconds,
+                max_chars_per_page=settings.research_max_chars_per_page,
+            )
         elif settings.research_provider == "tavily":
             assert client is not None and settings.tavily_api_key is not None
             runtime.research = TavilyResearchGateway(
@@ -336,7 +343,7 @@ def _safe_message(code: str) -> str:
     if code in {"research_billing_unknown", "research_billing_unresolved", "research_route_cap_exceeded", "research_cost_policy_violation"}:
         return "Research stopped because a provider charge could not be verified against the configured limit. Check billing before retrying."
     if code == "research_price_unknown":
-        return "The configured research adapter has no qualified billing contract. Select Treg or the local fixture profile."
+        return "The configured research adapter has no qualified billing contract. Select a qualified research provider or the local fixture profile."
     if code in {
         "provider_authentication_failed",
         "provider_policy_denied",
@@ -420,15 +427,19 @@ def _dependencies(
     if settings.research_provider != "fixture":
         if research is None:
             raise ProviderError("research_not_configured")
+        direct = settings.research_provider == "tinyfish"
+        rpm = min(settings.research_provider_rpm, 30) if direct else settings.research_provider_rpm
+        daily = min(settings.research_provider_daily_requests, 500) if direct else settings.research_provider_daily_requests
+        urls = min(settings.research_provider_daily_urls, 1000) if direct else settings.research_provider_daily_urls
         research_budget = BudgetService(budget.repository, call_kind="research",
             max_run_calls=settings.max_research_calls, user_daily_calls=settings.research_user_daily_calls,
-            provider_rpm=settings.research_provider_rpm, provider_tpm=1,
-            provider_daily_requests=settings.research_provider_daily_requests,
-            provider_daily_urls=settings.research_provider_daily_urls,
+            provider_rpm=rpm, provider_tpm=1,
+            provider_daily_requests=daily,
+            provider_daily_urls=urls,
             run_budget_usd=settings.run_budget_usd, user_daily_budget_usd=settings.user_daily_budget_usd,
             provider_scope=f"research/{settings.research_provider}",
             circuit_failures=settings.provider_circuit_failures, circuit_seconds=settings.provider_circuit_seconds)
-        research = AccountedResearch(research, research_budget, claim, settings)
+        research = AccountedResearch(research, research_budget, claim, settings, language=request.language)
     return replace(
         base,
         model=AccountedGateway(model, budget, claim, settings),
