@@ -68,6 +68,7 @@ async def test_rejected_plan_has_bounded_repairs_accounting_and_safe_api_error(
         assert "required writing format" in run["error_message"]
     assert "private" not in json.dumps(run)
     assert (await client.get(f"/api/v1/runs/{run_id}/article")).status_code == 404
+
     async with app.state.repository.pool.connection() as connection:
         calls = await (await connection.execute(
             "SELECT p.call_id,p.status,p.actual_tokens,p.metadata,b.actual_usd,b.status AS billing_status "
@@ -92,6 +93,48 @@ async def test_rejected_plan_has_bounded_repairs_accounting_and_safe_api_error(
         assert calls[1]["call_id"].endswith(":repair1")
         assert "relationships between fields" in sent[1]["messages"][-1]["content"]
     assert all("private" not in json.dumps(body) for body in sent)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("finish", "cost", "expected"), [
+    ("length", "0", 2), ("length", None, 1), ("content_filter", "0", 1),
+])
+async def test_only_known_free_length_cutoff_can_use_repair(api_client, acceptance_database, finish, cost, expected):
+    client, app = api_client
+    settings = Settings(
+        _env_file=None, database_url=acceptance_database, model_provider="openrouter",
+        openrouter_api_key="test-key", openrouter_qualified=True, enable_external_calls=True,
+        provider_rpm=10, provider_tpm=100_000, max_job_attempts=1,
+    )
+    created = await client.post("/api/v1/runs", json={
+        "topic": "Write a short story about a dragon", "research_mode": "off", "target_words": 500,
+    }, headers={"Idempotency-Key": "length-accounting"})
+    run_id = created.json()["id"]
+    sent = []
+
+    def respond(request):
+        sent.append(json.loads(request.content))
+        usage = {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
+        if cost is not None:
+            usage["cost"] = cost
+        return httpx.Response(200, json={
+            "model": "vendor/returned-free-model", "provider": "TestProvider", "usage": usage,
+            "choices": [{"finish_reason": finish, "message": {"content": "private partial output"}}],
+        })
+
+    claim = await app.state.repository.claim_job("length-accounting-worker")
+    assert claim is not None
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as transport:
+        await process_claim(app.state.repository, claim, settings,
+                            ProviderRuntime(model=OpenRouterGateway(transport, "test-key")))
+    saved = (await client.get(f"/api/v1/runs/{run_id}")).json()
+    assert saved["model_call_count"] == len(sent) == expected
+    assert saved["error_code"] == "provider_incomplete_output"
+    assert (await client.get(f"/api/v1/runs/{run_id}/article")).status_code == 404
+    if expected == 2:
+        assert "reached the output limit" in sent[1]["messages"][-1]["content"]
+        assert sent[1]["max_tokens"] == sent[0]["max_tokens"]
+    assert "private partial output" not in json.dumps(sent)
 
 
 @pytest.mark.asyncio

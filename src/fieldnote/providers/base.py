@@ -50,6 +50,7 @@ class ProviderError(Exception):
         response: ResponseMetadata | None = None,
         validation_kind: Literal["json", "schema", "semantics", "envelope"] | None = None,
         schema_name: str | None = None,
+        output_truncated: bool = False,
         research_cost_micro: int | None = None,
     ) -> None:
         super().__init__(code)
@@ -60,6 +61,7 @@ class ProviderError(Exception):
         self.response = response
         self.validation_kind = validation_kind
         self.schema_name = schema_name
+        self.output_truncated = output_truncated
         self.research_cost_micro = research_cost_micro
 
 

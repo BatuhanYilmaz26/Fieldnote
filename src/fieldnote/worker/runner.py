@@ -227,23 +227,28 @@ class AccountedGateway:
         try:
             return await self._dispatch(schema, messages, call_identity, identity, max_tokens)
         except ProviderError as exc:
+            repair_truncated = (
+                exc.output_truncated and self.settings.model_policy == "free_only"
+                and exc.response is not None and exc.response.cost_usd == 0
+            )
             if (
-                exc.code != "provider_schema_invalid"
-                or self.settings.openrouter_schema_repairs < 1
+                self.settings.openrouter_schema_repairs < 1
+                or (exc.code != "provider_schema_invalid" and not repair_truncated)
             ):
                 raise
+            instruction = (
+                "The previous response reached the output limit. Start with the JSON object immediately. "
+                "Keep phrasing concise while meeting the original content and schema requirements."
+                if repair_truncated else
+                "The previous response did not match the required JSON schema. "
+                "Recheck the original instructions, including relationships between fields "
+                "such as exact totals and contiguous task order. "
+                "Return only one JSON object matching that schema. Do not add "
+                "commentary, links, tools or markdown fences."
+            )
             repair_messages = [
                 *messages,
-                {
-                    "role": "user",
-                    "content": (
-                        "The previous response did not match the required JSON schema. "
-                        "Recheck the original instructions, including relationships between fields "
-                        "such as exact totals and contiguous task order. "
-                        "Return only one JSON object matching that schema. Do not add "
-                        "commentary, links, tools or markdown fences."
-                    ),
-                },
+                {"role": "user", "content": instruction},
             ]
             return await self._dispatch(
                 schema,

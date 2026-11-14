@@ -253,6 +253,7 @@ class OpenRouterGateway:
             if choice.get("finish_reason") != "stop":
                 raise ProviderError(
                     "provider_incomplete_output", outcome_unknown=True, response=metadata, schema_name=schema_name,
+                    output_truncated=choice.get("finish_reason") == "length",
                 )
             message = choice["message"]
             if message.get("refusal"):

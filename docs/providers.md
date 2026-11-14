@@ -73,6 +73,9 @@ A failed output can still consume quota or incur a reported charge. Missing
 usage or cost stays unknown. The configured schema-repair allowance remains
 bounded and each repair requires its own quota reservation. A reported charge
 on a free-only route stops the run before any repair is attempted.
+On free-only routes, an explicit output-length cutoff with a reported zero
+charge can also use that repair allowance. The retry requests a more concise
+response within the same output budget.
 
 ### Check your OpenRouter account
 
