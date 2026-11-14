@@ -44,7 +44,7 @@ the exact revision it reviewed.
 ## Capabilities
 
 - **Writing Desk:** a focused light/dark workspace with readable typography, inline field validation, keyboard-accessible mobile navigation and an article-first reading view.
-- **Research and source inspection:** discover topics from publisher and research feeds, inspect source dates, and supply primary references and author observations.
+- **Research and source inspection:** discover topics from publisher and research feeds, supply primary references, and inspect the saved excerpt behind a claim. Direct TinyFish Search and Fetch is available for accounts with a verified free allowance.
 - **Multilingual drafting:** generate articles in English, Turkish, Spanish, Portuguese or German with a configurable audience, tone and target length.
 - **Editorial workflow:** compare headline suggestions, edit Markdown, inspect claim-support findings and request assessments of saved revisions.
 - **Publication preparation:** switch between Medium, LinkedIn and X views; edit independent social drafts; copy a separate title and formatted or plain-text body; copy ordered X posts with saved weighted counts; export revision-bound bundles.
@@ -72,7 +72,7 @@ the exact revision it reviewed.
 | Workflow and validation | Python 3.13, LangGraph, Pydantic |
 | API and progress | FastAPI, Uvicorn, asyncio, Server-Sent Events |
 | Persistence | PostgreSQL, Psycopg, LangGraph PostgreSQL checkpointer |
-| Providers | OpenRouter for writing, Treg/TinyFish for research, HTTPX for provider requests |
+| Providers | OpenRouter for writing, Treg or direct TinyFish for research, HTTPX for provider requests |
 | Frontend | JavaScript modules, semantic HTML, themed CSS, locally served Manrope and safe Markdown rendering |
 | Development and operations | pytest, Ruff, Mypy, Docker Compose, GitHub Actions |
 

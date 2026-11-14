@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from fieldnote.settings import Settings
-from fieldnote.storage import Repository
+from fieldnote.storage import Repository, StorageError
 from fieldnote.storage.pool import database_pool
 from fieldnote.worker.runner import process_claim
 
@@ -66,7 +66,7 @@ async def test_browser_shell_enforces_csp_and_has_no_html_injection_sinks(
 
     html = response.text
     assert html.count("<script") == 1
-    assert '<script type="module" src="/assets/app.js?desk=5"></script>' in html
+    assert '<script type="module" src="/assets/app.js?desk=6"></script>' in html
     lowered = html.lower()
     assert "onclick=" not in lowered
     assert "onerror=" not in lowered
@@ -108,12 +108,30 @@ async def test_article_revision_query_previews_an_exact_immutable_revision(
     await run_one_fixture_job(acceptance_database)
 
     generated = (await client.get(f"/api/v1/runs/{run_id}/article")).json()
+    cited = next(claim for claim in generated["claims"] if claim["excerpt_ids"])
+    params = {"excerpt": cited["excerpt_ids"][0]}
+    evidence_path = f"/api/v1/runs/{run_id}/revisions/{generated['id']}/evidence"
+    evidence = await client.get(evidence_path, params=params)
+    assert evidence.status_code == 200, evidence.text
+    assert evidence.json()["excerpt"]["content_hash"] == cited["excerpt_hashes"][0]
+    assert evidence.json()["excerpt"]["source_id"] == evidence.json()["source"]["id"]
+    assert evidence.json()["excerpt"]["text"]
+    assert (await client.get(evidence_path, params={"excerpt": "excerpt_unlinked"})).status_code == 404
+    async with database_pool(acceptance_database) as pool:
+        repository = Repository(pool, acceptance_database)
+        with pytest.raises(StorageError) as other_owner:
+            await repository.get_cited_evidence("other-owner", run_id, generated["id"], params["excerpt"])
+        assert other_owner.value.status_code == 404
     edited = await client.post(
         f"/api/v1/runs/{run_id}/revisions",
         json={"parent_revision": generated["id"], "markdown": "# Edited\n\nMy own draft."},
     )
     assert edited.status_code == 201, edited.text
     human = edited.json()
+    assert (await client.get(
+        f"/api/v1/runs/{run_id}/revisions/{human['id']}/evidence", params=params,
+    )).status_code == 404
+    assert (await client.get(evidence_path, params=params)).json() == evidence.json()
 
     latest = (await client.get(f"/api/v1/runs/{run_id}/article")).json()
     assert latest["id"] == human["id"]

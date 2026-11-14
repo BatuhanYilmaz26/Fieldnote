@@ -9,8 +9,8 @@
   <title>Fieldnote — Writing studio</title>
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <link rel="preload" href="/assets/fonts/Manrope-Variable.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/assets/styles.css?desk=5">
-  <script type="module" src="/assets/app.js?desk=5"></script>
+  <link rel="stylesheet" href="/assets/styles.css?desk=6">
+  <script type="module" src="/assets/app.js?desk=6"></script>
 </head>
 <body data-workspace="compose">
   <a class="skip" href="#main">Skip to workspace</a>
@@ -130,6 +130,16 @@
       <footer class="site-footer"><span>Drafts stay in your configured workspace.</span><span>Fieldnote <span aria-hidden="true">/</span> Your writing studio</span></footer>
     </div>
   </div>
+  <dialog id="evidence-dialog" class="leave-dialog evidence-dialog" aria-labelledby="evidence-title">
+    <form method="dialog" class="evidence-heading">
+      <h2 id="evidence-title">Saved evidence</h2>
+      <button class="secondary" value="close" autofocus>Close</button>
+    </form>
+    <p id="evidence-status" role="status"></p>
+    <p id="evidence-meta"></p>
+    <pre id="evidence-text" tabindex="0" aria-label="Saved excerpt" hidden></pre>
+    <a id="evidence-origin" class="text-button" target="_blank" rel="noopener noreferrer" hidden>Open source ↗</a>
+  </dialog>
   <dialog id="leave-dialog" class="leave-dialog" aria-labelledby="leave-title" aria-describedby="leave-description">
     <form method="dialog">
       <span class="eyebrow">Unsaved changes</span>

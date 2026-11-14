@@ -318,6 +318,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def revisions(run_id: str, request: Request, owner: str = Depends(authenticated)):
         return {"revisions": await request.app.state.repository.list_revisions(owner, run_id)}
 
+    @app.get("/api/v1/runs/{run_id}/revisions/{revision_id}/evidence")
+    async def cited_evidence(
+        run_id: UUID, revision_id: UUID, request: Request,
+        excerpt: Annotated[str, Query(min_length=1, max_length=160)],
+        owner: str = Depends(authenticated),
+    ):
+        return await request.app.state.repository.get_cited_evidence(owner, str(run_id), str(revision_id), excerpt)
+
     @app.post("/api/v1/runs/{run_id}/revisions", status_code=201)
     async def edit(run_id: str, change: EditRequest, request: Request, owner: str = Depends(authenticated)):
         ledger = await request.app.state.repository.sources(owner, run_id)

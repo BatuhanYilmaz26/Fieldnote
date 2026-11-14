@@ -661,6 +661,29 @@ class Repository:
             result["assessment_job"] = _public(job) if job else None
             return result
 
+    async def get_cited_evidence(self, owner: str, run_id: str, revision_id: str, excerpt_id: str) -> dict:
+        article = await self.get_article(owner, run_id, revision_id)
+        hashes = {
+            digest
+            for claim in article["claims"]
+            for cited_id, digest in zip(claim.get("excerpt_ids", []), claim.get("excerpt_hashes", []), strict=False)
+            if cited_id == excerpt_id
+        }
+        if hashes:
+            async with self.pool.connection() as connection:
+                row = await (await connection.execute(
+                    "SELECT e.excerpt_data,s.source_data FROM evidence_excerpts e "
+                    "JOIN sources s ON s.run_id=e.run_id AND s.source_id=e.source_id "
+                    "JOIN runs r ON r.id=e.run_id "
+                    "WHERE e.run_id=%s AND e.id=%s AND r.owner_id=%s AND r.deleted_at IS NULL",
+                    (_uuid(run_id), excerpt_id, owner),
+                )).fetchone()
+            if row:
+                excerpt = row["excerpt_data"]
+                if hashes == {excerpt["content_hash"]} and markdown_hash(excerpt["text"]) in hashes:
+                    return {"source": row["source_data"], "excerpt": excerpt}
+        raise StorageError("evidence_not_found", "Saved evidence is unavailable for this revision.", 404)
+
     async def list_revisions(self, owner: str, run_id: str, *, limit: int = 50) -> list[dict]:
         if not 1 <= limit <= 100:
             raise StorageError("invalid_limit", "Page size must be between 1 and 100", 422)

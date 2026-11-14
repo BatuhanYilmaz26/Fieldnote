@@ -1409,6 +1409,29 @@ body[data-focus='true'] .draft-grid {
   line-height:1.9;
   color:var(--muted);
 }
+.evidence-dialog {
+  width:min(720px,calc(100% - 24px));
+  max-height:calc(100dvh - 24px);
+  padding:clamp(16px,4vw,30px);
+}
+.evidence-heading {display:flex;align-items:center;justify-content:space-between;gap:16px}
+.evidence-heading h2 {margin:0}
+.evidence-dialog :is(a,button),.claim-actions button {min-height:44px}
+#evidence-origin {display:inline-flex;align-items:center}
+#evidence-text {
+  max-height:46dvh;
+  overflow:auto;
+  margin:12px 0;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  font:inherit;
+  line-height:1.65;
+}
+.claim-actions {display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.claim-passage:focus {outline:2px solid var(--accent);outline-offset:4px}
 .dialog-actions {
   display:flex;
   flex-wrap:wrap;
@@ -2111,6 +2134,7 @@ label:has(input[type='checkbox']) {display:flex;align-items:center;min-height:44
 .topic-discovery select {width:auto}
 .publication-panel .actions {gap:12px}
 .library-card-title {-webkit-line-clamp:unset}
+.library-snippet {grid-column:1 / -1;color:var(--muted);overflow-wrap:anywhere;font-size:14px}
 .sidebar .icon-button:hover {background:var(--hover)}
 .history-list [aria-current] .history-item {border-color:var(--accent)}
 .connection[data-tone='offline'] {color:var(--warning)}

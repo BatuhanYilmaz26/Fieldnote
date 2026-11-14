@@ -69,6 +69,9 @@ const state = {
   view: "compose",
   articleTicket: 0,
   historyTicket: 0,
+  historyStatus: "loading",
+  historyLoadMore: false,
+  evidenceRequest: null,
   evidenceLoading: false,
   reviewTimer: null,
   reviewSubmitting: false,
@@ -299,20 +302,29 @@ function renderLibrary() {
   const filter = $("draft-filter").value;
   const rows = state.history.filter((run) => {
     const statusMatches = filter === "all" || (filter === "running" ? !TERMINAL.has(run.state) : run.state === filter);
-    return statusMatches && run.request.topic.toLocaleLowerCase().includes(query);
+    const searchable = [run.request.topic, run.request.angle].filter(Boolean).join(" ");
+    return statusMatches && searchable.toLocaleLowerCase().includes(query);
   });
-  $("library-summary").textContent = state.history.length
+  const pending = state.historyStatus === "loading";
+  const failed = state.historyStatus === "failed";
+  $("library-summary").textContent = pending ? "Loading draft library…"
+    : failed ? "Could not load the draft library."
+    : state.history.length
     ? `${rows.length} of ${state.history.length} recent draft${state.history.length === 1 ? "" : "s"}${state.nextCursor ? " · More saved drafts are available below." : ""}`
     : "Every saved draft will be here, ready to reopen.";
   const list = $("library-list");
+  list.setAttribute("aria-busy", String(pending));
   list.replaceChildren();
   if (!rows.length) {
     const item = document.createElement("li");
     item.className = "library-empty";
     const title = document.createElement("strong");
-    title.textContent = state.history.length ? "No matching drafts." : "No saved drafts yet.";
+    title.textContent = pending ? "Looking for saved drafts…" : failed ? "Saved drafts are unavailable."
+      : state.history.length ? "No matching drafts." : "No saved drafts yet.";
     const detail = document.createElement("p");
-    detail.textContent = state.history.length ? "Try another phrase or choose All statuses." : "Create your first draft. Your sources, progress and revisions will stay together.";
+    detail.textContent = pending ? "" : failed ? "Try loading the library again."
+      : state.history.length ? "Try another phrase or choose All statuses."
+        : "Create your first draft. Your sources, progress and revisions will stay together.";
     item.append(title, detail);
     list.append(item);
   }
@@ -338,12 +350,21 @@ function renderLibrary() {
     const date = document.createElement("span");
     date.textContent = relativeTime(run.accepted_at);
     meta.append(length, date);
-    card.append(head, title, meta);
+    card.append(head, title);
+    if (run.request.angle) {
+      const snippet = document.createElement("span");
+      snippet.className = "library-snippet";
+      snippet.textContent = run.request.angle;
+      card.append(snippet);
+    }
+    card.append(meta);
     card.addEventListener("click", () => selectRun(run.id).catch(showError));
     item.append(card);
     list.append(item);
   }
-  $("more").hidden = !state.nextCursor;
+  $("more").hidden = !state.nextCursor && !failed;
+  $("more").disabled = pending;
+  $("more").textContent = failed ? "Retry loading drafts" : "Load more drafts";
 }
 
 function relativeTime(value) {
@@ -856,12 +877,85 @@ async function refreshHistory(append = false) {
   const before = append && state.nextCursor
     ? `&before=${encodeURIComponent(state.nextCursor)}`
     : "";
-  const data = await api(`/api/v1/runs?limit=20${before}`);
-  if (ticket !== state.historyTicket) return;
-  const combined = append ? [...state.history, ...data.runs] : data.runs;
-  state.history = [...new Map(combined.map((run) => [run.id, run])).values()];
-  state.nextCursor = data.next_cursor;
-  renderHistory();
+  state.historyStatus = "loading";
+  state.historyLoadMore = append;
+  $("library-summary").textContent = "Loading draft library…";
+  $("library-list").setAttribute("aria-busy", "true");
+  $("more").disabled = true;
+  try {
+    const data = await api(`/api/v1/runs?limit=20${before}`);
+    if (ticket !== state.historyTicket) return;
+    const combined = append ? [...state.history, ...data.runs] : data.runs;
+    state.history = [...new Map(combined.map((run) => [run.id, run])).values()];
+    state.nextCursor = data.next_cursor;
+    state.historyStatus = "ready";
+    renderHistory();
+  } catch (error) {
+    if (ticket !== state.historyTicket) return;
+    state.historyStatus = "failed";
+    renderLibrary();
+    throw error;
+  }
+}
+
+function matchingPassage(claimText) {
+  const simplify = (value) => value
+    .replace(/\[\d+\]|[`*_]/g, "")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  const claim = simplify(claimText || "");
+  if (!claim || state.editorDirty) return null;
+  const passages = [...$("preview").querySelectorAll("p,li,blockquote,h2,h3")]
+    .filter((item) => !item.querySelector("p,li,blockquote") && simplify(item.textContent).includes(claim));
+  return passages.length === 1 ? passages[0] : null;
+}
+
+async function inspectEvidence(article, excerptId, expectedHash) {
+  const runId = state.activeRun;
+  if (!runId || state.article?.id !== article.id) return;
+  const dialog = $("evidence-dialog");
+  const request = new AbortController();
+  state.evidenceRequest?.abort();
+  state.evidenceRequest = request;
+  $("evidence-title").textContent = "Saved evidence";
+  $("evidence-status").textContent = "Loading the excerpt…";
+  $("evidence-meta").textContent = "";
+  $("evidence-text").textContent = "";
+  $("evidence-text").hidden = true;
+  $("evidence-origin").hidden = true;
+  dialog.showModal();
+  try {
+    const { source, excerpt } = await api(
+      `/api/v1/runs/${runId}/revisions/${article.id}/evidence?excerpt=${encodeURIComponent(excerptId)}`,
+      { signal: request.signal },
+    );
+    if (request.signal.aborted || !dialog.open || runId !== state.activeRun || state.article?.id !== article.id) return;
+    if (excerpt.id !== excerptId || excerpt.content_hash !== expectedHash || excerpt.source_id !== source.id) {
+      throw new Error("Evidence identity changed");
+    }
+    $("evidence-title").textContent = source.title;
+    const retrieved = new Date(source.retrieved_at);
+    const published = source.published_at && new Date(source.published_at);
+    $("evidence-meta").textContent = [
+      excerpt.source_kind === "snippet" ? "Search snippet" : "Page excerpt",
+      excerpt.locator,
+      published && Number.isFinite(published.getTime()) ? `Published ${published.toLocaleDateString()}` : "",
+      Number.isFinite(retrieved.getTime()) ? `Retrieved ${retrieved.toLocaleDateString()}` : "",
+    ].filter(Boolean).join(" · ");
+    $("evidence-text").textContent = excerpt.text;
+    $("evidence-text").hidden = false;
+    const url = source.url && safeExternalUrl(source.url);
+    if (url) {
+      $("evidence-origin").href = url;
+      $("evidence-origin").hidden = false;
+    }
+    $("evidence-status").textContent = "";
+  } catch {
+    if (!request.signal.aborted && dialog.open && state.evidenceRequest === request) {
+      $("evidence-status").textContent = "The saved excerpt could not be loaded. Close this view and try again.";
+    }
+  }
 }
 
 function renderReview(article) {
@@ -926,6 +1020,36 @@ function renderReview(article) {
       citations.textContent = `Evidence: ${claim.excerpt_locators.join("; ")}`;
       item.append(citations);
     }
+    const actions = document.createElement("div");
+    actions.className = "claim-actions";
+    if (matchingPassage(claim.claim_text)) {
+      const jump = document.createElement("button");
+      jump.type = "button";
+      jump.className = "secondary";
+      jump.textContent = "Show in preview";
+      jump.addEventListener("click", () => {
+        if (state.article?.id !== article.id || state.editorDirty) return;
+        editing(false);
+        const passage = matchingPassage(claim.claim_text);
+        if (!passage) return;
+        passage.classList.add("claim-passage");
+        passage.tabIndex = -1;
+        passage.focus({ preventScroll: true });
+        passage.scrollIntoView({ block: "center" });
+      });
+      actions.append(jump);
+    }
+    (claim.excerpt_ids || []).forEach((id, index) => {
+      const hash = claim.excerpt_hashes?.[index];
+      if (!hash) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = claim.excerpt_ids.length === 1 ? "View evidence" : `View evidence ${index + 1}`;
+      button.addEventListener("click", () => inspectEvidence(article, id, hash));
+      actions.append(button);
+    });
+    if (actions.childElementCount) item.append(actions);
     claims.append(item);
   }
   if (!assessments.length) {
@@ -1073,7 +1197,15 @@ function renderSources(sources) {
       item.append(title);
     }
     const meta = document.createElement("small");
-    meta.textContent = `${source.source_kind || "Unclassified source"} · ${source.provider || "unknown"} · published ${source.published_at || "unknown"} · updated ${source.updated_at || "unknown"} · retrieved ${source.retrieved_at || "unknown"} · ${source.extraction_state || "stored"}`;
+    meta.textContent = [
+      source.source_kind || "Unclassified source",
+      source.provider || "unknown",
+      `published ${source.published_at || "unknown"}`,
+      source.updated_at && `publisher update ${source.updated_at}`,
+      source.origin_last_modified_at && `origin Last-Modified ${source.origin_last_modified_at}`,
+      `retrieved ${source.retrieved_at || "unknown"}`,
+      source.extraction_state || "stored",
+    ].filter(Boolean).join(" · ");
     item.append(meta);
     list.append(item);
   }
@@ -1592,7 +1724,14 @@ function wireEvents() {
   $("theme-toggle").addEventListener("click", toggleTheme);
   $("copy-hash").addEventListener("click", copyHash);
   $("refresh").addEventListener("click", () => refreshHistory().catch(showError));
-  $("more").addEventListener("click", () => refreshHistory(true).catch(showError));
+  $("more").addEventListener("click", () => {
+    refreshHistory(state.historyStatus !== "failed" || state.historyLoadMore).catch(showError);
+  });
+  $("evidence-dialog").addEventListener("close", () => {
+    if ($("evidence-dialog").open) return;
+    state.evidenceRequest?.abort();
+    state.evidenceRequest = null;
+  });
   $("preview-tab").addEventListener("click", () => editing(false));
   $("edit-tab").addEventListener("click", () => editing(true));
   const selectTab = (editingMode) => {

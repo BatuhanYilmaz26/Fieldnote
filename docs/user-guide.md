@@ -48,7 +48,7 @@ Fill in:
 | Topic | Yes | 1–500 characters. Be specific about the reader, promise and facts to check. |
 | Reader | Yes | 1–240 characters. The studio defaults to “Technical practitioners”. |
 | Writing style | Yes | **Concise technical** focuses on one useful idea, examples and limitations; **General writing** keeps the original profile. |
-| Your angle | No | Up to 1,000 characters describing your point of view. |
+| Your angle | No | Up to 1,000 characters describing your point of view. When research is enabled, the search provider can receive a bounded query built from your topic and angle. |
 | Your observations | No | Up to 4,000 characters of your own experience or notes; these are sent to your configured model with the brief. |
 | Primary source URLs | No | Up to four public URLs, one per line, prioritized during research. Unsupported or unavailable sources remain explicit gaps. |
 | Prepare for | Yes | Select Medium, LinkedIn and/or X. The article remains the canonical source for later adaptations. |
@@ -124,8 +124,9 @@ When a draft reaches **Needs review**, check:
 - **Research limitations** — shown when research was partial or unavailable.
 - **Review findings** — errors and warnings such as unsupported claims or a
   synthetic-fixture notice.
-- **Claims** — each cited factual sentence with its assessment, reason and stored
-  evidence excerpt.
+- **Claim support** — cited sentences with their assessment and reason. Use
+  **View evidence** to read the saved excerpt and its source. **Show in preview**
+  moves keyboard focus to the passage when it can be identified uniquely.
 - **Sources** — provider, retrieval time and extraction state.
 
 The fixture profile deliberately produces two unsupported claims and a
@@ -201,8 +202,9 @@ The sidebar's **Recent drafts** lists up to six recent durable runs with a state
 (such as “Needs review · 1 h ago”); the list refreshes when the selected run
 reaches a terminal state, so completed drafts are never shown as queued.
 Select one to recover its current revision and progress without regenerating it.
-Open **Draft library** for draft cards, search and status filters. Search applies
-to the recent drafts currently loaded; **Load more drafts** includes older pages
+Open **Draft library** for draft rows with titles, brief angles when supplied,
+status and date. Search matches the title or angle of the drafts currently
+loaded. **Load more drafts** includes older pages
 in the search. The count and summary show how many drafts are loaded rather than
 claiming to count unloaded records. The refresh button reloads the latest page.
 
