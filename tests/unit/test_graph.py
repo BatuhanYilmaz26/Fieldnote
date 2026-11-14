@@ -20,8 +20,27 @@ from fieldnote.graph import (
     make_fixture_dependencies,
     merge_sections,
 )
+from fieldnote.graph.workflow import _bounded_context_json
 from fieldnote.providers.base import ModelResult, ModelT
 from fieldnote.providers.fixture import FixtureGateway, FixtureResearchGateway
+
+
+def test_prompt_previews_fit_utf8_and_leave_stored_evidence_untouched():
+    long = 'Evidence with "quotes" and Türkçe.\n' * 1000
+    context = {"brief": {"angle": "kept"}, "evidence": {
+        "short": {"text": "Short source.", "source_id": "src1", "content_hash": "a" * 64},
+        "long": {"text": long, "source_id": "src2", "content_hash": "b" * 64},
+    }}
+    prompt = _bounded_context_json(context, 1900)
+    assert len(prompt.encode("utf-8")) <= 1900
+    bounded = json.loads(prompt)
+    assert bounded["brief"] == context["brief"]
+    assert bounded["evidence"]["short"] == context["evidence"]["short"]
+    preview = bounded["evidence"]["long"]
+    assert preview["prompt_preview"] and 100 < len(preview["text"]) < len(long)
+    assert long.startswith(preview["text"])
+    assert preview["content_hash"] == "b" * 64
+    assert context["evidence"]["long"]["text"] == long
 
 
 class RecordingGateway(FixtureGateway):

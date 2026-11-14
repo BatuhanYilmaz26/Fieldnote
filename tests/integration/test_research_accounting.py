@@ -216,7 +216,8 @@ async def test_actual_worker_accounts_each_treg_request_and_keeps_model_counts_s
     assert all(row["reserved_tokens"] == row["actual_tokens"] == 0 for row in rows)
 
 
-async def test_actual_worker_reserves_one_request_and_each_url_for_tinyfish_batch(worker_repository):
+@pytest.mark.parametrize("second_succeeds", [False, True])
+async def test_actual_worker_reserves_one_request_and_each_url_for_tinyfish_batch(worker_repository, second_succeeds):
     repository = worker_repository
     settings = Settings(_env_file=None, enable_external_calls=True, research_provider="tinyfish",
                         tinyfish_api_key="test-key", tinyfish_free_qualified=True)
@@ -228,6 +229,7 @@ async def test_actual_worker_reserves_one_request_and_each_url_for_tinyfish_batc
                               f"characters 0:{len(page['text'])} of fetched Markdown")
     model = FixtureGateway(json.loads(json.dumps(base.model._responses).replace(original["excerpt"]["id"], new_id)))
     second = "https://example.org/another-reference"
+    long_body = 'Another source with "quoted text" and Türkçe.\n' * 400
     batches = []
 
     def transport(http_request):
@@ -237,7 +239,7 @@ async def test_actual_worker_reserves_one_request_and_each_url_for_tinyfish_batc
             ]})
         batches.append(json.loads(http_request.content)["urls"])
         return httpx.Response(200, json={"results": [
-            {"url": second, "error": "not reachable"},
+            {"url": second, "text": long_body} if second_succeeds else {"url": second, "error": "not reachable"},
             {"url": original_url, "text": page["text"], "title": page["title"]},
         ]})
 
@@ -257,6 +259,12 @@ async def test_actual_worker_reserves_one_request_and_each_url_for_tinyfish_batc
         )).fetchall()
     assert [row["reserved_urls"] for row in rows] == [0, 2]
     assert all(row["reserved_tokens"] == row["actual_tokens"] == 0 for row in rows)
+    if second_succeeds:
+        async with repository.pool.connection() as connection:
+            excerpts = await (await connection.execute(
+                "SELECT excerpt_data->>'text' AS text FROM evidence_excerpts WHERE run_id=%s", (run["id"],),
+            )).fetchall()
+        assert any(row["text"] == long_body for row in excerpts)
 
 
 async def test_tinyfish_snapshots_avoid_dispatch_and_revalidate_only_for_same_owner(worker_repository):

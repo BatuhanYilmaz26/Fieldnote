@@ -464,6 +464,7 @@ def _dependencies(
         max_results_per_query=settings.max_results_per_query,
         max_extracted_pages=settings.max_extracted_pages,
         max_evidence_tokens=settings.max_evidence_tokens,
+        max_input_bytes=settings.model_max_input_tokens * 3,
     )
 
 
