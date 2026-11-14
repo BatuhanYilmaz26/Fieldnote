@@ -1,5 +1,6 @@
 """Direct TinySearch and TinyFetch for a qualified zero-cost account."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -70,7 +71,7 @@ class TinyFishResearchGateway:
         payload = await self._request("GET", _SEARCH, params=params, limit=512_000)
         return normalize_search(payload, max_results, "tinyfish", 0)
 
-    async def extract_many(self, urls: tuple[str, ...]) -> ResearchResults:
+    async def extract_many(self, urls: tuple[str, ...], *, previous: dict[str, Any] | None = None) -> ResearchResults:
         if not 1 <= len(urls) <= self.batch_size:
             raise ValueError("TinyFish extraction exceeds the batch limit")
         qualified: list[str] = []
@@ -85,10 +86,16 @@ class TinyFishResearchGateway:
                 qualified.append(canonical)
         if not qualified:
             return ResearchResults([], 0)
+        validators = {}
+        if previous and len(qualified) == 1 and previous["source"].get("original_url") == qualified[0]:
+            etag = previous["source"].get("origin_etag")
+            if isinstance(etag, str) and 1 <= len(etag) <= 256 and all(32 <= ord(char) < 127 for char in etag):
+                validators["if_none_match"] = etag
         payload = await self._request("POST", _FETCH, limit=1_048_576, json={
             "urls": qualified, "format": "markdown", "links": False, "ttl": 0,
             "include_etag_and_last_modified": True,
             "per_url_timeout_ms": max(1, int(self.timeout * 750)),
+            **validators,
         })
         if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
             raise ProviderError("research_invalid_response", research_cost_micro=0)
@@ -113,7 +120,20 @@ class TinyFishResearchGateway:
             try:
                 if row.get("final_url") is not None:
                     validate_public_url(str(row["final_url"]))
-                extracted.append(normalize_extraction(canonical, row, "tinyfish", self.max_chars_per_page, 0))
+                if row.get("not_modified") is True:
+                    if not validators or previous is None:
+                        continue
+                    source = previous["source"]
+                    returned_url = row.get("final_url") or canonical
+                    if canonicalize_url(returned_url) != canonicalize_url(source["url"]):
+                        continue
+                    extracted.append({**previous, "source": {**source, "revalidated_at": datetime.now(UTC).isoformat()}})
+                    continue
+                result = normalize_extraction(canonical, row, "tinyfish", self.max_chars_per_page, 0)
+                etag = row.get("etag")
+                if isinstance(etag, str) and 1 <= len(etag) <= 256 and all(32 <= ord(char) < 127 for char in etag):
+                    result["source"]["origin_etag"] = etag
+                extracted.append(result)
             except (ProviderError, UnsafeURL):
                 continue
         return ResearchResults(extracted, 0)

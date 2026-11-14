@@ -24,6 +24,10 @@ _INJECTION = re.compile(
 _DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$")
 
 
+def source_identity(canonical_url: str) -> str:
+    return "src_" + hashlib.sha256(canonical_url.encode("utf-8")).hexdigest()[:16]
+
+
 def retry_after(response: httpx.Response) -> float | None:
     raw = response.headers.get("retry-after")
     if raw is None:
@@ -106,7 +110,7 @@ def normalize_extraction(canonical: str, row: dict[str, Any], provider: str, max
         final = canonical
     title = str(row.get("title") or urlsplit(final).hostname or "Source")[:240].strip() or "Source"
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    source_id = "src_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    source_id = source_identity(canonical)
     locator = f"characters 0:{len(text)} of fetched Markdown"
     flags = ("possible_instruction_injection",) if _INJECTION.search(text) else ()
     published = _date(row.get("published_date"))

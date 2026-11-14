@@ -1204,6 +1204,7 @@ function renderSources(sources) {
       source.updated_at && `publisher update ${source.updated_at}`,
       source.origin_last_modified_at && `origin Last-Modified ${source.origin_last_modified_at}`,
       `retrieved ${source.retrieved_at || "unknown"}`,
+      source.revalidated_at && `revalidated ${source.revalidated_at}`,
       source.extraction_state || "stored",
     ].filter(Boolean).join(" · ");
     item.append(meta);

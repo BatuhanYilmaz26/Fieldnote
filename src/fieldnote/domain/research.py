@@ -72,6 +72,10 @@ def factual_research_reason(topic: str, instructions: str = "") -> str | None:
     return None
 
 
+def needs_fresh_sources(topic: str, instructions: str = "") -> bool:
+    return bool(_FRESH.search(f"{topic} {instructions}"))
+
+
 def is_general_or_creative(topic: str, instructions: str = "") -> bool:
     """Only recognize explicit creative or general explanatory drafting."""
     text = f"{topic} {instructions}"

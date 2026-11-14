@@ -22,6 +22,7 @@ from fieldnote.providers.fixture import FixtureGateway
 from fieldnote.providers.tinyfish import TinyFishResearchGateway
 from fieldnote.providers.treg import TregResearchGateway
 from fieldnote.services.budgets import BudgetError, BudgetService
+from fieldnote.services.research_accounting import AccountedResearch
 from fieldnote.settings import Settings
 from fieldnote.storage import Repository
 from fieldnote.storage.pool import database_pool
@@ -256,6 +257,57 @@ async def test_actual_worker_reserves_one_request_and_each_url_for_tinyfish_batc
         )).fetchall()
     assert [row["reserved_urls"] for row in rows] == [0, 2]
     assert all(row["reserved_tokens"] == row["actual_tokens"] == 0 for row in rows)
+
+
+async def test_tinyfish_snapshots_avoid_dispatch_and_revalidate_only_for_same_owner(worker_repository):
+    repository = worker_repository
+    settings = Settings(_env_file=None, enable_external_calls=True, research_provider="tinyfish",
+                        tinyfish_api_key="test-key", tinyfish_free_qualified=True, tinyfish_cache_seconds=900)
+    url = "https://example.org/article"
+    calls = []
+
+    def transport(http_request):
+        request = json.loads(http_request.content)
+        calls.append(request)
+        response = ({"url": url, "not_modified": True} if request.get("if_none_match") == '"v1"'
+                    else {"url": url, "text": "Technical evidence.", "etag": '"v1"'})
+        return httpx.Response(200, json={"results": [response], "errors": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+        gateway = TinyFishResearchGateway(client, "test-key", qualify_dns=False)
+        budget = service(repository, provider_scope="research/tinyfish")
+
+        async def collect(owner, cache_seconds, *, keep_snapshot=False):
+            run = await repository.create_run(owner, {"topic": "Technical topic"}, uuid4().hex)
+            claim = await repository.claim_job("snapshot-worker")
+            try:
+                research = AccountedResearch(gateway, budget, claim, settings, cache_seconds=cache_seconds)
+                snapshot, = await research.extract_many((url,))
+                if keep_snapshot:
+                    await repository.save_sources(claim, [snapshot["source"]], [snapshot["excerpt"]])
+                async with repository.pool.connection() as connection:
+                    await connection.execute("UPDATE runs SET state='needs_review' WHERE id=%s", (run["id"],))
+                    await connection.commit()
+                result = await repository.get_run(owner, run["id"])
+                return snapshot, result["research_call_count"]
+            finally:
+                await claim.close()
+
+        initial, count = await collect("cache-owner", 900, keep_snapshot=True)
+        assert count == 1
+        reused, count = await collect("cache-owner", 900)
+        assert count == 0 and reused == initial
+        other, count = await collect("other-owner", 900)
+        assert count == 1 and other["source"]["retrieved_at"] != initial["source"]["retrieved_at"]
+        bypassed, count = await collect("cache-owner", 0)
+        assert count == 1 and "revalidated_at" not in bypassed["source"]
+        async with repository.pool.connection() as connection:
+            await connection.execute("SELECT pg_sleep(1.1)")
+        validated, count = await collect("cache-owner", 1)
+        assert count == 1 and "revalidated_at" in validated["source"]
+        assert validated["excerpt"] == initial["excerpt"]
+        assert validated["source"]["retrieved_at"] == initial["source"]["retrieved_at"]
+        assert [item.get("if_none_match") for item in calls] == [None, None, None, '"v1"']
 
 
 @pytest.mark.parametrize(("charge", "retry_after", "max_calls", "state"), [

@@ -5,6 +5,7 @@ import pytest
 
 from fieldnote.providers.base import ProviderError
 from fieldnote.providers.tinyfish import TinyFishResearchGateway
+from fieldnote.services.research import ResearchCoordinator, ResearchLimits
 
 pytestmark = pytest.mark.asyncio
 
@@ -79,3 +80,27 @@ async def test_direct_search_never_retries_or_redirects(status, code, cost):
     assert caught.value.research_cost_micro == cost
     assert caught.value.retryable is (status == 429)
     assert caught.value.outcome_unknown is (status is None)
+
+
+@pytest.mark.parametrize(("pages", "batches"), [(2, [2]), (8, [4, 4])])
+async def test_coordinator_bounds_batch_count_and_preserves_all_evidence(pages, batches):
+    urls = tuple(f"https://example.org/page-{index}" for index in range(pages))
+    posted = []
+
+    def transport(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"results": [{"url": url} for url in urls[4:]]})
+        selected = json.loads(request.content)["urls"]
+        posted.append(len(selected))
+        return httpx.Response(200, json={"results": [
+            {"url": url, "text": f"Evidence from {url}"} for url in reversed(selected)
+        ], "errors": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+        gateway = TinyFishResearchGateway(client, "test-key", qualify_dns=False)
+        outcome = await ResearchCoordinator(gateway, ResearchLimits(max_pages=pages)).collect(
+            ["evidence"], reference_urls=urls[:4],
+        )
+    assert posted == batches
+    assert {source["original_url"] for source in outcome.sources.values()} == set(urls)
+    assert not outcome.failures and len(outcome.excerpts) == pages

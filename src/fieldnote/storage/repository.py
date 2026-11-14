@@ -684,6 +684,24 @@ class Repository:
                     return {"source": row["source_data"], "excerpt": excerpt}
         raise StorageError("evidence_not_found", "Saved evidence is unavailable for this revision.", 404)
 
+    async def recent_research_snapshots(self, claim: Claim, source_ids: list[str]) -> list[dict]:
+        """Read bounded candidates from immutable evidence owned by this run's author."""
+        async with self.pool.connection() as connection:
+            return await (await connection.execute(
+                "WITH recent AS (SELECT id FROM runs WHERE owner_id=%s AND id<>%s "
+                "AND deleted_at IS NULL AND state IN ('succeeded','needs_review') AND kind='generation' "
+                "AND accepted_at >= clock_timestamp() - interval '1 day' "
+                "ORDER BY accepted_at DESC,id DESC LIMIT 100) "
+                "SELECT s.source_data AS source,e.excerpt_data AS excerpt "
+                "FROM recent JOIN sources s ON recent.id=s.run_id "
+                "JOIN evidence_excerpts e ON e.run_id=s.run_id AND e.source_id=s.source_id "
+                "WHERE s.source_id=ANY(%s) AND s.source_data->>'provider'='tinyfish' "
+                "AND s.source_data->>'extraction_state'='extracted' "
+                "AND e.excerpt_data->>'source_kind'='body' "
+                "ORDER BY s.created_at DESC,e.id LIMIT 100",
+                (claim.run["owner_id"], _uuid(claim.run_id), source_ids),
+            )).fetchall()
+
     async def list_revisions(self, owner: str, run_id: str, *, limit: int = 50) -> list[dict]:
         if not 1 <= limit <= 100:
             raise StorageError("invalid_limit", "Page size must be between 1 and 100", 422)

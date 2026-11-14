@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     treg_qualified: bool = False
     tinyfish_free_qualified: bool = False
     tinyfish_api_key: SecretStr | None = Field(default=None, repr=False)
+    tinyfish_cache_seconds: Annotated[int, Field(ge=0, le=3600)] = 0
     tavily_qualified: bool = False
     openrouter_api_key: SecretStr | None = Field(default=None, repr=False)
     openrouter_model: str = "openrouter/free"

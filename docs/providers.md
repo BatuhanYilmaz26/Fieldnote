@@ -152,6 +152,14 @@ public URLs per TinyFetch request. PostgreSQL accounts separately for requests
 and URLs. Publication dates and the origin's HTTP Last-Modified timestamp are
 stored separately. A modification timestamp does not establish publication.
 
+Set `TINYFISH_CACHE_SECONDS` to a value from 1 to 3600 to reuse a recent
+extraction from another saved run by the same owner. The default is 0. Briefs
+requiring current or sensitive facts bypass reuse. When only one URL needs
+fetching and a recent snapshot has an ETag, Fieldnote can send a conditional
+request. An unchanged response records a separate validation time and preserves
+the excerpt and its original retrieval time. Conditional requests still consume
+request and URL quota.
+
 [Pricing](https://www.tinyfish.ai/pricing) · [Search API](https://docs.tinyfish.ai/api-reference/search-the-web) · [Fetch API](https://docs.tinyfish.ai/api-reference/fetch-and-extract-content-from-urls)
 
 ## Source links and citations

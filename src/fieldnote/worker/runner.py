@@ -28,6 +28,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from fieldnote.domain import CreateRunRequest, EditorialReview
 from fieldnote.domain.languages import language_profile
+from fieldnote.domain.research import needs_fresh_sources
 from fieldnote.graph import (
     GraphDependencies,
     GraphError,
@@ -439,7 +440,13 @@ def _dependencies(
             run_budget_usd=settings.run_budget_usd, user_daily_budget_usd=settings.user_daily_budget_usd,
             provider_scope=f"research/{settings.research_provider}",
             circuit_failures=settings.provider_circuit_failures, circuit_seconds=settings.provider_circuit_seconds)
-        research = AccountedResearch(research, research_budget, claim, settings, language=request.language)
+        cache_seconds = (
+            settings.tinyfish_cache_seconds if direct and not needs_fresh_sources(request.topic, request.research_context())
+            else 0
+        )
+        research = AccountedResearch(
+            research, research_budget, claim, settings, language=request.language, cache_seconds=cache_seconds,
+        )
     return replace(
         base,
         model=AccountedGateway(model, budget, claim, settings),
