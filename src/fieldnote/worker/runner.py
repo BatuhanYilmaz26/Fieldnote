@@ -43,6 +43,7 @@ from fieldnote.providers.tavily import TavilyResearchGateway
 from fieldnote.providers.treg import TregResearchGateway
 from fieldnote.services.budgets import BudgetService, retry_decision
 from fieldnote.services.citations import CitationError, render_citations
+from fieldnote.services.research_accounting import AccountedResearch, ResearchDispatchError
 from fieldnote.services.revision_review import normalize_review, review_input
 from fieldnote.settings import Settings
 from fieldnote.storage.pool import database_pool
@@ -332,6 +333,10 @@ def _safe_message(code: str) -> str:
             "The AI response did not match the required writing format. "
             "No invalid content was accepted. Check the provider before starting a new draft."
         )
+    if code in {"research_billing_unknown", "research_billing_unresolved", "research_route_cap_exceeded", "research_cost_policy_violation"}:
+        return "Research stopped because a provider charge could not be verified against the configured limit. Check billing before retrying."
+    if code == "research_price_unknown":
+        return "The configured research adapter has no qualified billing contract. Select Treg or the local fixture profile."
     if code in {
         "provider_authentication_failed",
         "provider_policy_denied",
@@ -412,6 +417,18 @@ def _dependencies(
     research = runtime.research if runtime.research is not None else base.research
     if settings.research_provider == "fixture" and not isinstance(research, FixtureResearchGateway):
         research = base.research
+    if settings.research_provider != "fixture":
+        if research is None:
+            raise ProviderError("research_not_configured")
+        research_budget = BudgetService(budget.repository, call_kind="research",
+            max_run_calls=settings.max_research_calls, user_daily_calls=settings.research_user_daily_calls,
+            provider_rpm=settings.research_provider_rpm, provider_tpm=1,
+            provider_daily_requests=settings.research_provider_daily_requests,
+            provider_daily_urls=settings.research_provider_daily_urls,
+            run_budget_usd=settings.run_budget_usd, user_daily_budget_usd=settings.user_daily_budget_usd,
+            provider_scope=f"research/{settings.research_provider}",
+            circuit_failures=settings.provider_circuit_failures, circuit_seconds=settings.provider_circuit_seconds)
+        research = AccountedResearch(research, research_budget, claim, settings)
     return replace(
         base,
         model=AccountedGateway(model, budget, claim, settings),
@@ -627,10 +644,12 @@ async def _handle_failure(
     code = getattr(exc, "code", None)
     if not isinstance(code, str) or not _SAFE_CODE.fullmatch(code):
         code = "generation_failed"
-    if isinstance(exc, ProviderError):
-        remaining_calls = max(
-            0, settings.max_model_calls - int(claim.run.get("model_call_count", 0))
-        )
+    if isinstance(exc, ProviderError) and exc.retryable:
+        run = await repository.get_run(claim.run["owner_id"], claim.run_id)
+        if isinstance(exc, ResearchDispatchError):
+            remaining_calls = max(0, settings.max_research_calls - run["research_call_count"])
+        else:
+            remaining_calls = max(0, settings.max_model_calls - run["model_call_count"])
         decision = retry_decision(
             exc,
             attempt=int(claim.run.get("attempt", 1)),

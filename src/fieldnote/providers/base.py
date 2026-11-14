@@ -21,6 +21,18 @@ class ResponseMetadata:
     cost_usd: Decimal | None = None
 
 
+class ResearchResults(list[dict[str, Any]]):
+    """Search rows plus the billing receipt for this specific request."""
+
+    def __init__(self, rows: list[dict[str, Any]], cost_micro_usd: int | None) -> None:
+        super().__init__(rows)
+        self.cost_micro_usd = cost_micro_usd
+
+
+class DispatchAdmissionError(Exception):
+    """Marker mixed into provider errors that must stop a whole collection."""
+
+
 class ProviderError(Exception):
     """A public-safe classification without upstream bodies or credentials.
 
@@ -38,6 +50,7 @@ class ProviderError(Exception):
         response: ResponseMetadata | None = None,
         validation_kind: Literal["json", "schema", "semantics", "envelope"] | None = None,
         schema_name: str | None = None,
+        research_cost_micro: int | None = None,
     ) -> None:
         super().__init__(code)
         self.code = code
@@ -47,6 +60,7 @@ class ProviderError(Exception):
         self.response = response
         self.validation_kind = validation_kind
         self.schema_name = schema_name
+        self.research_cost_micro = research_cost_micro
 
 
 @dataclass(frozen=True, slots=True)

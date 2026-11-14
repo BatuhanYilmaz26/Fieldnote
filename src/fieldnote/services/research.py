@@ -10,7 +10,7 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from fieldnote.domain.languages import fold_for_matching
-from fieldnote.providers.base import ProviderError
+from fieldnote.providers.base import DispatchAdmissionError, ProviderError
 from fieldnote.services.urls import canonicalize_url
 
 _WORD = re.compile(r"[^\W_](?:[^\W_]|['’-]){1,40}")
@@ -228,7 +228,7 @@ class ResearchCoordinator:
                     query, max_results=self.limits.max_results_per_query
                 )
             except ProviderError as exc:
-                if exc.code in _STOP_ERRORS:
+                if isinstance(exc, DispatchAdmissionError) or exc.code in _STOP_ERRORS:
                     raise
                 outcome.failures.append({"stage": "search", "code": exc.code})
                 continue
@@ -258,7 +258,7 @@ class ResearchCoordinator:
             try:
                 extracted = await self.gateway.extract(str(result["url"]))
             except ProviderError as exc:
-                if exc.code in _STOP_ERRORS:
+                if isinstance(exc, DispatchAdmissionError) or exc.code in _STOP_ERRORS:
                     raise
                 outcome.failures.append({"stage": "extract", "code": exc.code})
                 continue

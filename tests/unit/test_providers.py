@@ -14,6 +14,7 @@ from fieldnote.providers import (
     OpenRouterGateway,
     ProviderError,
 )
+from fieldnote.providers.base import ResearchResults
 from fieldnote.providers.treg import TregResearchGateway
 
 
@@ -378,7 +379,7 @@ async def test_treg_search_and_extract_normalize_evidence_with_zero_charge():
                 "published_at": None,
             }
         ]
-        assert gateway.last_charge_micro == 0
+        assert isinstance(found, ResearchResults) and found.cost_micro_usd == 0
         extracted = await gateway.extract("https://example.org/article")
         assert extracted["source"]["content_hash"] == extracted["excerpt"]["content_hash"]
         assert extracted["source"]["published_at"].startswith("2024-01-02")

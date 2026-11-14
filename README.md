@@ -72,7 +72,7 @@ the exact revision it reviewed.
 | Workflow and validation | Python 3.13, LangGraph, Pydantic |
 | API and progress | FastAPI, Uvicorn, asyncio, Server-Sent Events |
 | Persistence | PostgreSQL, Psycopg, LangGraph PostgreSQL checkpointer |
-| Providers | OpenRouter, HTTPX; Treg/TinyFish and optional Tavily research adapters |
+| Providers | OpenRouter for writing, Treg/TinyFish for research, HTTPX for provider requests |
 | Frontend | JavaScript modules, semantic HTML, themed CSS, locally served Manrope and safe Markdown rendering |
 | Development and operations | pytest, Ruff, Mypy, Docker Compose, GitHub Actions |
 

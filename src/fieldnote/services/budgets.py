@@ -16,7 +16,7 @@ from uuid import UUID
 
 from psycopg.types.json import Jsonb
 
-from fieldnote.providers.base import ProviderError
+from fieldnote.providers.base import DispatchAdmissionError, ProviderError
 from fieldnote.storage.repository import Claim, Repository
 
 BUDGET_LOCK = 1195461971
@@ -25,11 +25,11 @@ _MONEY_UNIT = Decimal("0.00000001")
 _MAX_MONEY = Decimal("1000000000")
 _SAFE_METADATA = frozenset({
     "requested_model", "resolved_model", "provider", "request_id", "code",
-    "validation_kind", "schema_name",
+    "validation_kind", "schema_name", "operation",
 })
 
 
-class BudgetError(ProviderError):
+class BudgetError(ProviderError, DispatchAdmissionError):
     """A public-safe admission failure with a scheduler-readable retry hint."""
 
 
@@ -73,6 +73,9 @@ class BudgetService:
         provider_scope: str = "openrouter",
         circuit_failures: int = 3,
         circuit_seconds: int = 30,
+        call_kind: Literal["model", "research"] = "model",
+        provider_daily_requests: int = 100,
+        provider_daily_urls: int = 100,
     ) -> None:
         for name, value in {
             "max_run_calls": max_run_calls,
@@ -81,6 +84,8 @@ class BudgetService:
             "provider_tpm": provider_tpm,
             "circuit_failures": circuit_failures,
             "circuit_seconds": circuit_seconds,
+            "provider_daily_requests": provider_daily_requests,
+            "provider_daily_urls": provider_daily_urls,
         }.items():
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
@@ -96,6 +101,11 @@ class BudgetService:
         self.provider_scope = provider_scope
         self.circuit_failures = circuit_failures
         self.circuit_seconds = circuit_seconds
+        if call_kind not in {"model", "research"}:
+            raise ValueError("Invalid provider call kind")
+        self.call_kind = call_kind
+        self.provider_daily_requests = provider_daily_requests
+        self.provider_daily_urls = provider_daily_urls
 
     async def reserve_call(
         self,
@@ -105,6 +115,7 @@ class BudgetService:
         max_tokens: int,
         estimated_cost_usd: Decimal | None,
         fixture: bool = False,
+        url_count: int = 0,
     ) -> CallReservation:
         """Reserve one bounded outbound attempt under the active execution fence.
 
@@ -117,9 +128,13 @@ class BudgetService:
         if (
             not isinstance(max_tokens, int)
             or isinstance(max_tokens, bool)
-            or not 1 <= max_tokens <= 1_000_000
+            or not (1 if self.call_kind == "model" else 0) <= max_tokens <= 1_000_000
         ):
             raise ValueError("A bounded positive total token estimate is required")
+        if type(url_count) is not int or not 0 <= url_count <= 8 or (self.call_kind == "model" and url_count):
+            raise ValueError("Invalid research URL reservation")
+        if self.call_kind == "research" and max_tokens:
+            raise ValueError("Research requests cannot reserve model tokens")
         if not fixture and max_tokens > self.provider_tpm:
             raise BudgetError("provider_token_limit_exceeded")
         if estimated_cost_usd is None:
@@ -135,7 +150,7 @@ class BudgetService:
             run = await self.repository._fence(connection, claim)
             existing = await (
                 await connection.execute(
-                    "SELECT p.attempt,p.reserved_tokens,p.provider_scope,b.amount_usd FROM provider_calls p "
+                    "SELECT p.attempt,p.reserved_tokens,p.provider_scope,p.call_kind,p.reserved_urls,b.amount_usd FROM provider_calls p "
                     "JOIN budget_reservations b ON b.run_id=p.run_id AND b.call_id=p.call_id "
                     "WHERE p.run_id=%s AND p.call_id=%s",
                     (UUID(claim.run_id), call_identity),
@@ -146,6 +161,8 @@ class BudgetService:
                     existing["provider_scope"] != self.provider_scope
                     or existing["reserved_tokens"] != max_tokens
                     or existing["amount_usd"] != amount
+                    or existing["call_kind"] != self.call_kind
+                    or existing["reserved_urls"] != url_count
                 ):
                     raise BudgetError("call_identity_conflict")
                 return CallReservation(
@@ -157,13 +174,14 @@ class BudgetService:
                     existing["reserved_tokens"],
                     self.provider_scope,
                 )
-            if run["model_call_count"] >= self.max_run_calls:
+            counter = "model_call_count" if self.call_kind == "model" else "research_call_count"
+            if run[counter] >= self.max_run_calls:
                 raise BudgetError("run_call_limit_exhausted")
             count = await (
                 await connection.execute(
                     "SELECT count(*) AS calls FROM provider_calls p JOIN runs r ON r.id=p.run_id "
-                    "WHERE r.owner_id=%s AND p.created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'",
-                    (run["owner_id"],),
+                    "WHERE r.owner_id=%s AND p.call_kind=%s AND p.created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'",
+                    (run["owner_id"], self.call_kind),
                 )
             ).fetchone()
             if count is None:
@@ -171,6 +189,24 @@ class BudgetService:
             if count["calls"] >= self.user_daily_calls:
                 raise BudgetError("user_daily_call_limit_exhausted")
             if not fixture:
+                if self.call_kind == "research":
+                    daily = await (await connection.execute(
+                        "WITH calls AS (SELECT p.*,b.actual_usd,j.lease_owner,j.lease_expires_at,j.generation,"
+                        "p.created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS today "
+                        "FROM provider_calls p JOIN budget_reservations b ON b.run_id=p.run_id AND b.call_id=p.call_id "
+                        "JOIN jobs j ON j.run_id=p.run_id WHERE p.provider_scope=%s AND p.call_kind='research') "
+                        "SELECT count(*) FILTER (WHERE today) AS requests,coalesce(sum(reserved_urls) FILTER (WHERE today),0) AS urls,"
+                        "bool_or((actual_usd IS NULL AND (status<>'reserved' OR lease_owner IS NULL OR "
+                        "lease_expires_at<=clock_timestamp() OR fencing_generation<>generation)) OR "
+                        "coalesce((metadata->>'reservation_overrun')::boolean,false)) AS billing_hold FROM calls",
+                        (self.provider_scope,),
+                    )).fetchone()
+                    if daily is None:
+                        raise BudgetError("budget_store_unavailable", retryable=True)
+                    if daily["billing_hold"]:
+                        raise BudgetError("research_billing_unresolved")
+                    if daily["requests"] >= self.provider_daily_requests or daily["urls"] + url_count > self.provider_daily_urls:
+                        raise BudgetError("research_daily_quota_exhausted")
                 circuit = await (
                     await connection.execute(
                         "SELECT blocked_until,blocked_until>clock_timestamp() AS blocked,"
@@ -218,13 +254,13 @@ class BudgetService:
                 raise BudgetError("run_budget_exhausted")
             if spend["user_spend"] + amount > self.user_daily_budget_usd:
                 raise BudgetError("user_daily_budget_exhausted")
-            attempt = run["model_call_count"] + 1
+            attempt = run[counter] + 1
             await connection.execute(
-                "UPDATE runs SET model_call_count=%s WHERE id=%s", (attempt, UUID(claim.run_id))
+                f"UPDATE runs SET {counter}=%s WHERE id=%s", (attempt, UUID(claim.run_id))
             )
             await connection.execute(
-                "INSERT INTO provider_calls(run_id,call_id,attempt,status,metadata,provider_scope,reserved_tokens,fencing_generation) "
-                "VALUES (%s,%s,%s,'reserved',%s,%s,%s,%s)",
+                "INSERT INTO provider_calls(run_id,call_id,attempt,status,metadata,provider_scope,reserved_tokens,fencing_generation,call_kind,reserved_urls) "
+                "VALUES (%s,%s,%s,'reserved',%s,%s,%s,%s,%s,%s)",
                 (
                     UUID(claim.run_id),
                     call_identity,
@@ -233,6 +269,8 @@ class BudgetService:
                     self.provider_scope,
                     max_tokens,
                     claim.generation,
+                    self.call_kind,
+                    url_count,
                 ),
             )
             await connection.execute(
@@ -252,6 +290,7 @@ class BudgetService:
         outcome: Literal["succeeded", "failed", "unknown"] = "unknown",
         metadata: dict[str, Any] | None = None,
         retryable: bool = False,
+        retry_after: float | None = None,
     ) -> AccountingResult:
         """Record usage even after cancellation/lease loss; never authorize work.
 
@@ -336,8 +375,10 @@ class BudgetService:
                 if outcome == "succeeded" and previous_outcome != "succeeded":
                     await connection.execute(
                         "INSERT INTO provider_circuits(provider_scope) VALUES (%s) ON CONFLICT(provider_scope) "
-                        "DO UPDATE SET consecutive_failures=0,blocked_until=NULL,updated_at=clock_timestamp()",
-                        (reservation.provider_scope,),
+                        "DO UPDATE SET consecutive_failures=0,blocked_until=NULL,updated_at=clock_timestamp() "
+                        "WHERE NOT %s OR provider_circuits.blocked_until IS NULL OR "
+                        "provider_circuits.blocked_until<=clock_timestamp()",
+                        (reservation.provider_scope, self.call_kind == "research"),
                     )
                 elif retryable and previous_outcome == "reserved":
                     await connection.execute(
@@ -345,7 +386,8 @@ class BudgetService:
                         "VALUES (%s,1,CASE WHEN %s<=1 THEN clock_timestamp()+(%s*interval '1 second') ELSE NULL END) "
                         "ON CONFLICT(provider_scope) DO UPDATE SET consecutive_failures=provider_circuits.consecutive_failures+1,"
                         "blocked_until=CASE WHEN provider_circuits.consecutive_failures+1>=%s "
-                        "THEN clock_timestamp()+(%s*interval '1 second') ELSE provider_circuits.blocked_until END,updated_at=clock_timestamp()",
+                        "THEN greatest(provider_circuits.blocked_until,clock_timestamp()+(%s*interval '1 second')) "
+                        "ELSE provider_circuits.blocked_until END,updated_at=clock_timestamp()",
                         (
                             reservation.provider_scope,
                             self.circuit_failures,
@@ -353,6 +395,14 @@ class BudgetService:
                             self.circuit_failures,
                             self.circuit_seconds,
                         ),
+                    )
+                if self.call_kind == "research" and previous_outcome == "reserved" and retry_after is not None and math.isfinite(retry_after) and retry_after > 0:
+                    await connection.execute(
+                        "INSERT INTO provider_circuits(provider_scope,blocked_until) "
+                        "VALUES (%s,clock_timestamp()+(%s*interval '1 second')) ON CONFLICT(provider_scope) "
+                        "DO UPDATE SET blocked_until=greatest(provider_circuits.blocked_until,excluded.blocked_until),"
+                        "updated_at=clock_timestamp()",
+                        (reservation.provider_scope, min(retry_after, 31_536_000)),
                     )
             return AccountingResult(
                 status, known_cost is not None, known_tokens is not None, bool(overrun)

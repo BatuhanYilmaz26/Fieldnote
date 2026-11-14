@@ -116,6 +116,11 @@ Unknown billing or a charge exceeding the route cap stops the entire research
 collection before another query or page request can be sent. Ordinary missing
 pages can still produce a bounded, explicitly incomplete evidence pack.
 
+Shared quota and spend enforcement requires migration `0007_research_accounting.sql`.
+Each request has its own billing receipt. Search counts toward request limits,
+and extraction also counts toward the URL limit. See [budgets](budgets.md) for
+configuration and unresolved charges.
+
 The worker checks the run's cancellation state, deadline and execution lease
 before each search or page extraction. Losing permission to continue stops
 later research requests. A request already dispatched may still finish remotely;

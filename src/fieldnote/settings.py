@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     max_results_per_query: Annotated[int, Field(ge=1, le=5)] = 5
     max_extracted_pages: Annotated[int, Field(ge=1, le=8)] = 8
     max_evidence_tokens: Annotated[int, Field(ge=1024, le=12_000)] = 12_000
+    max_research_calls: Annotated[int, Field(ge=1, le=100)] = 12
+    research_provider_rpm: Annotated[int, Field(ge=1, le=1000)] = 12
+    research_provider_daily_requests: Annotated[int, Field(ge=1, le=100_000)] = 100
+    research_provider_daily_urls: Annotated[int, Field(ge=1, le=100_000)] = 100
+    research_user_daily_calls: Annotated[int, Field(ge=1, le=100_000)] = 100
     run_budget_usd: Annotated[Decimal, Field(ge=0, max_digits=12, decimal_places=6)] = Decimal("0")
     user_daily_budget_usd: Annotated[Decimal, Field(ge=0, max_digits=12, decimal_places=6)] = Decimal("0")
     job_lease_seconds: Annotated[int, Field(ge=3, le=600)] = 90

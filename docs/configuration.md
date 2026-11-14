@@ -31,7 +31,7 @@ The names `OPENROUTER_API_KEY`, `TREG_TOKEN`, and `TAVILY_API_KEY` are canonical
 |---|---|
 | `MODEL_PROVIDER=openrouter` | `ENABLE_EXTERNAL_CALLS=true`, `OPENROUTER_QUALIFIED=true`, nonblank `OPENROUTER_API_KEY` |
 | `RESEARCH_PROVIDER=treg` | `ENABLE_EXTERNAL_CALLS=true`, `TREG_QUALIFIED=true`, `TREG_TOKEN`, and `TREG_ORG` where the qualified token requires it |
-| `RESEARCH_PROVIDER=tavily` | `ENABLE_EXTERNAL_CALLS=true`, `TAVILY_QUALIFIED=true`, `TAVILY_API_KEY`; separately selected optional adapter |
+| `RESEARCH_PROVIDER=tavily` | The adapter remains available for qualification. The worker refuses to dispatch it until it has a qualified billing contract. |
 
 Set qualification flags only after recording your account's successful checks
 from the [provider guide](providers.md). The flags are not evidence themselves
@@ -41,7 +41,7 @@ accounts or routing policy.
 
 `OPENROUTER_BASE_URL` is fixed to `https://openrouter.ai/api/v1` and `TREG_BASE_URL` to `https://treg.to`. User requests cannot choose these origins. `OPENROUTER_MODEL` must occur in `MODEL_ALLOWLIST`. The default model policy is `free_only`; only `openrouter/free` or explicit `:free` model IDs are permitted under that policy. This string check does not qualify account availability or guarantee a zero total operating cost.
 
-`MODEL_POLICY=budgeted` requires positive `RUN_BUDGET_USD` and `USER_DAILY_BUDGET_USD`. Treg budgeted routing additionally needs a qualified `TREG_MAX_COST`; its provider header units must be established separately. A configured cap is not a substitute for transactional reservation enforcement.
+Budgeted model or Treg dispatch requires positive `RUN_BUDGET_USD` and `USER_DAILY_BUDGET_USD`. For Treg, set `TREG_ROUTING_POLICY=budgeted` and a qualified `TREG_MAX_COST_MICRO` in millionths of a US dollar. The worker reserves this per-request maximum against the same run and daily spend limits as model calls. Free-only Treg uses a zero cap.
 
 ## Hosted configuration
 
@@ -66,6 +66,11 @@ The example hostname is illustrative. Use your owned deployment host. Same-origi
 | `MODEL_MAX_CONCURRENCY` | 3 | Process execution bound; not a shared RPM/TPM quota |
 | `PROVIDER_RPM` / `PROVIDER_TPM` | 1 / 16000 | Conservative admission defaults to replace only with qualified capacity |
 | `MAX_EVIDENCE_TOKENS` | 12000 | Estimated total excerpt-text budget; oversized excerpts are omitted with a research limitation |
+| `MAX_RESEARCH_CALLS` | 12 | Research requests per run, including retries |
+| `RESEARCH_PROVIDER_RPM` | 12 | Shared rolling 60-second research request ceiling |
+| `RESEARCH_PROVIDER_DAILY_REQUESTS` | 100 | Shared provider request ceiling per UTC day |
+| `RESEARCH_PROVIDER_DAILY_URLS` | 100 | Shared extraction URL ceiling per UTC day |
+| `RESEARCH_USER_DAILY_CALLS` | 100 | Per-user research requests per UTC day |
 | `MAX_USER_NONTERMINAL_RUNS` / `MAX_GLOBAL_NONTERMINAL_RUNS` | 2 / 100 | Include retry waits and unacknowledged cancellations |
 | `JOB_LEASE_SECONDS` / `JOB_HEARTBEAT_SECONDS` | 90 / 20 | Heartbeat must be less than half the lease |
 | `DATABASE_POOL_MIN_SIZE` / `DATABASE_POOL_MAX_SIZE` | 1 / 5 | Per-process pool bounds; budget all replicas and dedicated lock sessions |

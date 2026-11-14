@@ -5,6 +5,12 @@ provider. PostgreSQL stores that authorization and the maximum reserved spend.
 Multiple API or worker processes consume the same ledger rather than separate
 in-memory allowances.
 
+Treg research also reserves each outbound attempt in PostgreSQL. Research has
+its own request quota and extraction URL quota and shares the run and user
+spending limits with model calls. These limits are application defaults. Set
+them to match the limits of the configured route and account. Workers sharing
+the database use one Treg quota scope. Synthetic research uses no allocation.
+
 ## What the limits mean
 
 - A run may authorize at most the configured model-call count, initially 32.
@@ -53,6 +59,13 @@ does not authorize generation. Unknown values remain null while the reservation
 continues to count. Repeated identical reconciliation is idempotent; conflicting
 known figures are rejected. A late unknown update cannot erase known usage.
 
+An unresolved research charge or a charge over the route cap pauses new Treg
+dispatches across workers. The hold survives midnight while the reservation is
+retained. An expired lease makes an unfinished reservation eligible for this
+hold. A confirmed provider receipt can resolve an unknown charge. A recorded
+overrun keeps the hold for the lifetime of its accounting record. Run retention
+governs the lifetime of these records.
+
 If reported usage or cost exceeds the reservation, the service records it and
 returns `reservation_overrun=true`; operators must investigate the estimate or
 provider behavior. Subsequent admission uses recorded actual spend. The service
@@ -80,6 +93,9 @@ retries. The default maximum is three attempts, including the first. Transient
 errors use bounded exponential delay/jitter and honor a valid provider wait.
 Authentication, policy, schema and budget failures do not become retry storms.
 No retry may exceed remaining call count or the accepted-at run deadline.
+Treg rate limits with a known charge share their `Retry-After` cooldown across
+workers. A successful request that was already in flight leaves that cooldown
+in effect.
 
 Long waits belong in the durable `retry_wait` scheduler state, not a sleeping
 HTTP handler or occupied worker slot. Three consecutive transient failures

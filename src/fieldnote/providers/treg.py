@@ -10,16 +10,18 @@ a free result.
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
 
 from fieldnote.domain.models import excerpt_identity
-from fieldnote.providers.base import ProviderError
+from fieldnote.providers.base import ProviderError, ResearchResults
 from fieldnote.services.urls import canonicalize_url, resolve_public_url, validate_public_url
 
 _TREG_ORIGIN = "https://treg.to"
@@ -54,8 +56,12 @@ def _retry_after(response: httpx.Response) -> float | None:
     try:
         value = float(raw)
     except ValueError:
-        return None
-    return min(max(value, 0.0), 300.0)
+        try:
+            date = parsedate_to_datetime(raw)
+            value = (date.astimezone(UTC) - datetime.now(UTC)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return max(value, 0.0) if math.isfinite(value) else None
 
 
 def _date(value: Any) -> datetime | None:
@@ -109,7 +115,6 @@ class TregResearchGateway:
         self.max_cost_micro = max_cost_micro
         self.qualify_dns = qualify_dns
         self.max_chars_per_page = max_chars_per_page
-        self.last_charge_micro = 0
 
     def _headers(self) -> dict[str, str]:
         headers = {
@@ -124,16 +129,13 @@ class TregResearchGateway:
             headers["X-Treg-Org"] = self._org
         return headers
 
-    def _check_charge(self, response: httpx.Response) -> int:
-        charge = _micro_header(response)
+    def _check_charge(self, charge: int | None) -> None:
         if charge is None:
             raise ProviderError("research_billing_unknown", outcome_unknown=True)
-        self.last_charge_micro = charge
         if self.routing_policy == "free_only" and charge != 0:
             raise ProviderError("research_cost_policy_violation", outcome_unknown=True)
         if self.routing_policy == "budgeted" and charge > self.max_cost_micro:
             raise ProviderError("research_route_cap_exceeded", outcome_unknown=True)
-        return charge
 
     def _error(self, response: httpx.Response) -> ProviderError:
         status = response.status_code
@@ -153,30 +155,36 @@ class TregResearchGateway:
             outcome_unknown=status == 408 or status >= 500,
         )
 
+    async def _request(self, method: str, operation: str, *, limit: int, **kwargs: Any) -> tuple[Any, int | None]:
+        """Carry a request-local receipt even when content or transport fails."""
+        charge = None
+        try:
+            async with self._client.stream(
+                method, f"{_TREG_ORIGIN}/call/{operation}", headers=self._headers(),
+                timeout=httpx.Timeout(30.0, connect=5.0), follow_redirects=False, **kwargs,
+            ) as response:
+                charge = _micro_header(response)
+                if response.status_code != 200:
+                    raise self._error(response)
+                self._check_charge(charge)
+                return await _json_body(response, limit), charge
+        except ProviderError as exc:
+            exc.research_cost_micro = charge
+            raise
+        except httpx.TimeoutException as exc:
+            raise ProviderError("research_timeout", retryable=True, outcome_unknown=True, research_cost_micro=charge) from exc
+        except httpx.RequestError as exc:
+            raise ProviderError("research_connection_failed", retryable=True, outcome_unknown=True, research_cost_micro=charge) from exc
+
     async def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]:
         if not isinstance(query, str) or not query.strip() or len(query) > 500:
             raise ValueError("Bounded nonblank query required")
         if not 1 <= max_results <= 5:
             raise ValueError("At most five search results are requested")
-        try:
-            async with self._client.stream(
-                "GET",
-                f"{_TREG_ORIGIN}/call/{_SEARCH_OPERATION}",
-                headers=self._headers(),
-                params={"query": query, "domain_type": "web", "page": 0},
-                timeout=httpx.Timeout(30.0, connect=5.0),
-                follow_redirects=False,
-            ) as response:
-                if response.status_code != 200:
-                    raise self._error(response)
-                self._check_charge(response)
-                payload = await _json_body(response, 512_000)
-        except httpx.TimeoutException as exc:
-            raise ProviderError("research_timeout", retryable=True, outcome_unknown=True) from exc
-        except httpx.RequestError as exc:
-            raise ProviderError("research_connection_failed", retryable=True, outcome_unknown=True) from exc
+        payload, charge = await self._request("GET", _SEARCH_OPERATION, limit=512_000,
+            params={"query": query, "domain_type": "web", "page": 0})
         if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
-            raise ProviderError("research_invalid_response", outcome_unknown=True)
+            raise ProviderError("research_invalid_response", outcome_unknown=True, research_cost_micro=charge)
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
         for item in payload["results"]:
@@ -202,41 +210,26 @@ class TregResearchGateway:
             )
             if len(results) >= max_results:
                 break
-        return results
+        return ResearchResults(results, charge)
 
     async def extract(self, url: str) -> dict[str, Any]:
         canonical = canonicalize_url(url)
         if self.qualify_dns:
             await resolve_public_url(canonical)
-        try:
-            async with self._client.stream(
-                "POST",
-                f"{_TREG_ORIGIN}/call/{_EXTRACT_OPERATION}",
-                headers=self._headers(),
-                json={"urls": [canonical], "format": "markdown", "links": False, "ttl": 0},
-                timeout=httpx.Timeout(30.0, connect=5.0),
-                follow_redirects=False,
-            ) as response:
-                if response.status_code != 200:
-                    raise self._error(response)
-                self._check_charge(response)
-                payload = await _json_body(response, 1_048_576)
-        except httpx.TimeoutException as exc:
-            raise ProviderError("research_timeout", retryable=True, outcome_unknown=True) from exc
-        except httpx.RequestError as exc:
-            raise ProviderError("research_connection_failed", retryable=True, outcome_unknown=True) from exc
+        payload, charge = await self._request("POST", _EXTRACT_OPERATION, limit=1_048_576,
+            json={"urls": [canonical], "format": "markdown", "links": False, "ttl": 0})
         if not isinstance(payload, dict):
-            raise ProviderError("research_invalid_response", outcome_unknown=True)
+            raise ProviderError("research_invalid_response", outcome_unknown=True, research_cost_micro=charge)
         errors = payload.get("errors")
         if isinstance(errors, list) and errors and not payload.get("results"):
-            raise ProviderError("research_extraction_failed")
+            raise ProviderError("research_extraction_failed", research_cost_micro=charge)
         rows = payload.get("results")
         if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
-            raise ProviderError("research_extraction_failed", outcome_unknown=True)
+            raise ProviderError("research_extraction_failed", outcome_unknown=True, research_cost_micro=charge)
         row = rows[0]
         text = row.get("text")
         if not isinstance(text, str) or not text.strip():
-            raise ProviderError("research_extraction_empty")
+            raise ProviderError("research_extraction_empty", research_cost_micro=charge)
         text = text[: self.max_chars_per_page]
         final_raw = row.get("final_url") or canonical
         try:
@@ -272,7 +265,7 @@ class TregResearchGateway:
                 "flags": list(flags),
             },
             "fixture": False,
-            "cost_micro_usd": self.last_charge_micro,
+            "cost_micro_usd": charge,
         }
 
 
