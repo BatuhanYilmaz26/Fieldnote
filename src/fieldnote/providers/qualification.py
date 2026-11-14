@@ -80,6 +80,16 @@ def _quota(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+async def read_openrouter_quota(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    data = (await _metadata(client, "/key", api_key)).get("data")
+    if not isinstance(data, dict):
+        raise ProviderError("qualification_account_invalid")
+    counter = _quota(data).get("free_model_daily_requests", {})
+    remaining = counter.get("remaining")
+    return {"free_model_daily_requests": counter or None,
+            "exhausted": remaining == 0 if remaining is not None else None}
+
+
 async def qualify_openrouter(
     client: httpx.AsyncClient, api_key: str, *, model: str = "openrouter/free",
 ) -> dict[str, Any]:
@@ -150,8 +160,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env-file", type=Path, help="Read only OPENROUTER_API_KEY from this file")
     parser.add_argument("--model", default="openrouter/free", help="Free router or an explicit :free model")
     parser.add_argument("--output", type=Path, default=Path(".local/openrouter/qualification.json"))
+    parser.add_argument("--quota-only", action="store_true", help="Read today's free request quota without inference")
     args = parser.parse_args(argv)
-    if args.output.exists():
+    if not args.quota_only and args.output.exists():
         parser.error("Output already exists. Choose a new report filename.")
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if args.env_file:
@@ -160,6 +171,19 @@ def main(argv: list[str] | None = None) -> int:
         api_key = str(dotenv_values(args.env_file).get("OPENROUTER_API_KEY") or "")
     if not api_key.strip():
         parser.error("Set OPENROUTER_API_KEY or select an environment file containing it.")
+
+    if args.quota_only:
+        async def read_quota() -> dict[str, Any]:
+            async with httpx.AsyncClient(trust_env=False, follow_redirects=False) as client:
+                return await read_openrouter_quota(client, api_key)
+
+        try:
+            quota = run_async(read_quota())
+        except ProviderError as exc:
+            print(json.dumps({"code": exc.code}))
+            return 1
+        print(json.dumps(quota))
+        return 0
 
     async def run() -> dict[str, Any]:
         async with httpx.AsyncClient(trust_env=False, follow_redirects=False) as client:

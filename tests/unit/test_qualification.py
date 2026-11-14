@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from fieldnote.providers.qualification import qualify_openrouter
+from fieldnote.providers.qualification import qualify_openrouter, read_openrouter_quota
 
 
 def completion(cost="0", provider="TestProvider"):
@@ -13,6 +13,27 @@ def completion(cost="0", provider="TestProvider"):
     return {
         "model": "vendor/free-model", "provider": provider, "usage": usage,
         "choices": [{"finish_reason": "stop", "message": {"content": '{"status":"ready"}'}}],
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("remaining", "exhausted"), [(0, True), (41, False), (None, None)])
+async def test_quota_only_checks_key_without_dispatching_or_leaking_metadata(remaining, exhausted):
+    calls = []
+
+    def respond(request):
+        calls.append((request.method, str(request.url)))
+        data = {"label": "private account label"}
+        if remaining is not None:
+            data["free_model_daily_requests"] = {"remaining": remaining, "limit": 50, "private": "omit"}
+        return httpx.Response(200, json={"data": data})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        quota = await read_openrouter_quota(client, "private-key")
+    assert calls == [("GET", "https://openrouter.ai/api/v1/key")]
+    assert quota == {
+        "free_model_daily_requests": {"remaining": remaining, "limit": 50} if remaining is not None else None,
+        "exhausted": exhausted,
     }
 
 

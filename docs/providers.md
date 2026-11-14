@@ -37,6 +37,17 @@ The adapter does not create a durable reservation or decide that a price is
 known. Before enabling paid calls, verify shared budget admission and record
 successful account qualification for that configuration.
 
+To check the current UTC day's free request allowance without sending a model
+prompt or consuming an inference request:
+
+```powershell
+.\.venv\Scripts\python.exe -m fieldnote.providers.qualification --env-file .env --quota-only
+```
+
+The result shows OpenRouter's daily request counter when the account returns it.
+A model endpoint can still return a rate-limit error with daily requests
+remaining. See [OpenRouter's rate limit documentation](https://openrouter.ai/docs/api_reference/limits).
+
 Failures use public-safe codes. The scheduler owns retry/backoff/deadline
 decisions; this transport never retries by itself. A rate-limit error preserves
 `Retry-After` where valid. A timeout can mean the remote request completed, so

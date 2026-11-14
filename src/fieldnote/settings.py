@@ -276,6 +276,7 @@ class Settings(BaseSettings):
             "auth_mode": self.auth_mode,
             "database_configured": self.database_url is not None,
             "model_provider": self.model_provider,
+            "openrouter_model": self.openrouter_model if self.model_provider == "openrouter" else None,
             "research_provider": self.research_provider,
             "model_policy": self.model_policy,
             "external_calls_enabled": self.enable_external_calls,
